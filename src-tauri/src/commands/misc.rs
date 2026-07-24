@@ -111,9 +111,24 @@ pub struct ToolVersion {
     wsl_distro: Option<String>,
 }
 
-const VALID_TOOLS: [&str; 7] = [
-    "claude", "codex", "gemini", "grok", "opencode", "openclaw", "hermes",
+const VALID_TOOLS: [&str; 8] = [
+    "claude",
+    "codex",
+    "gemini",
+    "grok",
+    "opencode",
+    "openclaw",
+    "hermes",
+    "kimicode",
 ];
+
+/// CLI 可执行文件名。App/tool id 与二进制名可能不同（如 kimicode → kimi）。
+fn tool_binary_name(tool: &str) -> &str {
+    match tool {
+        "kimicode" => "kimi",
+        _ => tool,
+    }
+}
 
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -428,6 +443,7 @@ fn tool_display_name(tool: &str) -> &'static str {
         "opencode" => "OpenCode",
         "openclaw" => "OpenClaw",
         "hermes" => "Hermes",
+        "kimicode" => "Kimi Code",
         _ => "Unknown",
     }
 }
@@ -453,11 +469,18 @@ const HERMES_INSTALL_UNIX: &str =
 const HERMES_UPDATE_UNIX: &str =
     "hermes update || bash -c 'tmp=$(mktemp) && curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'";
 
+/// Kimi Code CLI 官方安装器（单二进制，无需预装 Node）。npm 包 `@moonshot-ai/kimi-code` 为备选。
+const KIMICODE_INSTALL_UNIX: &str =
+    "bash -c 'tmp=$(mktemp) && curl -fsSL https://code.kimi.com/kimi-code/install.sh -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'";
+
 #[cfg(target_os = "windows")]
 const HERMES_INSTALL_WINDOWS_SCRIPT: &str =
     "irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1 | iex";
 #[cfg(target_os = "windows")]
 const GROK_INSTALL_WINDOWS_SCRIPT: &str = "irm https://x.ai/cli/install.ps1 | iex";
+#[cfg(target_os = "windows")]
+const KIMICODE_INSTALL_WINDOWS_SCRIPT: &str =
+    "irm https://code.kimi.com/kimi-code/install.ps1 | iex";
 
 #[cfg(target_os = "windows")]
 fn powershell_encoded_command(script: &str) -> String {
@@ -493,6 +516,14 @@ fn hermes_update_windows_command() -> String {
     format!("hermes update || {}", hermes_install_windows_command())
 }
 
+#[cfg(target_os = "windows")]
+fn kimicode_install_windows_command() -> String {
+    format!(
+        "powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand {}",
+        powershell_encoded_command(KIMICODE_INSTALL_WINDOWS_SCRIPT)
+    )
+}
+
 #[derive(Debug, Clone, Copy)]
 enum LifecycleCommandShell {
     Posix,
@@ -508,6 +539,7 @@ fn npm_install_command_for(tool: &str) -> Option<&'static str> {
         "grok" => Some("npm i -g @xai-official/grok@latest"),
         "opencode" => Some("npm i -g opencode-ai@latest"),
         "openclaw" => Some("npm i -g openclaw@latest"),
+        "kimicode" => Some("npm i -g @moonshot-ai/kimi-code@latest"),
         _ => None,
     }
 }
@@ -516,13 +548,15 @@ fn official_update_args(tool: &str) -> Option<&'static str> {
     match tool {
         "claude" | "codex" | "grok" | "hermes" => Some("update"),
         "openclaw" => Some("update --yes"),
-        "opencode" => Some("upgrade"),
+        // Kimi Code accepts both `upgrade` and `update` aliases; docs recommend upgrade.
+        "opencode" | "kimicode" => Some("upgrade"),
         _ => None,
     }
 }
 
 fn bare_official_update_command(tool: &str) -> Option<String> {
-    official_update_args(tool).map(|args| format!("{tool} {args}"))
+    let binary = tool_binary_name(tool);
+    official_update_args(tool).map(|args| format!("{binary} {args}"))
 }
 
 fn chain_update_commands(
@@ -555,6 +589,19 @@ fn tool_action_shell_command_for_shell(
     {
         return Some(chain_update_commands(
             grok_install_windows_command(),
+            npm_install_command_for(tool)?.to_string(),
+            shell,
+        ));
+    }
+
+    // Kimi Code: official PowerShell installer first, npm as fallback (same shape as Grok).
+    #[cfg(target_os = "windows")]
+    if tool == "kimicode"
+        && matches!(action, ToolLifecycleAction::Install)
+        && matches!(shell, LifecycleCommandShell::WindowsBatch)
+    {
+        return Some(chain_update_commands(
+            kimicode_install_windows_command(),
             npm_install_command_for(tool)?.to_string(),
             shell,
         ));
@@ -802,6 +849,15 @@ async fn get_single_tool_version_impl(
         }
         "openclaw" => fetch_npm_latest_for_tool(&client, "openclaw", tool, local).await,
         "hermes" => fetch_pypi_latest_version(&client, "hermes-agent").await,
+        "kimicode" => {
+            if let Some(version) =
+                fetch_npm_latest_for_tool(&client, "@moonshot-ai/kimi-code", tool, local).await
+            {
+                Some(version)
+            } else {
+                fetch_github_latest_version(&client, "MoonshotAI/kimi-code").await
+            }
+        }
         _ => None,
     };
 
@@ -1032,9 +1088,10 @@ fn try_get_version(tool: &str) -> ShellProbe {
             .filter(|s| is_valid_shell(s))
             .unwrap_or_else(|| "sh".to_string());
         let flag = default_flag_for_shell(&shell);
+        let binary = tool_binary_name(tool);
         Command::new(shell)
             .arg(flag)
-            .arg(format!("{tool} --version"))
+            .arg(format!("{binary} --version"))
             .output()
     };
 
@@ -1245,17 +1302,19 @@ fn try_get_version_wsl(
             default_flag_for_shell(shell)
         };
 
-        (shell.to_string(), flag, format!("{tool} --version"))
+        let binary = tool_binary_name(tool);
+        (shell.to_string(), flag, format!("{binary} --version"))
     } else {
+        let binary = tool_binary_name(tool);
         let cmd = if let Some(flag) = force_shell_flag {
             if !is_valid_shell_flag(flag) {
                 return ShellProbe::NotFound(format!("[WSL:{distro}] invalid shell flag: {flag}"));
             }
-            format!("\"${{SHELL:-sh}}\" {flag} '{tool} --version'")
+            format!("\"${{SHELL:-sh}}\" {flag} '{binary} --version'")
         } else {
             // 兜底：自动尝试 -lic, -lc, -c
             format!(
-                "\"${{SHELL:-sh}}\" -lic '{tool} --version' 2>/dev/null || \"${{SHELL:-sh}}\" -lc '{tool} --version' 2>/dev/null || \"${{SHELL:-sh}}\" -c '{tool} --version'"
+                "\"${{SHELL:-sh}}\" -lic '{binary} --version' 2>/dev/null || \"${{SHELL:-sh}}\" -lc '{binary} --version' 2>/dev/null || \"${{SHELL:-sh}}\" -c '{binary} --version'"
             )
         };
 
@@ -1497,12 +1556,13 @@ fn grok_extra_search_paths(
 }
 
 fn tool_executable_candidates(tool: &str, dir: &Path) -> Vec<std::path::PathBuf> {
+    let binary = tool_binary_name(tool);
     #[cfg(target_os = "windows")]
     {
-        let extensionless = dir.join(tool);
+        let extensionless = dir.join(binary);
         let mut candidates = vec![
-            dir.join(format!("{tool}.cmd")),
-            dir.join(format!("{tool}.exe")),
+            dir.join(format!("{binary}.cmd")),
+            dir.join(format!("{binary}.exe")),
         ];
         if windows_runnable_sibling_for_extensionless_tool(&extensionless).is_none() {
             candidates.push(extensionless);
@@ -1512,7 +1572,7 @@ fn tool_executable_candidates(tool: &str, dir: &Path) -> Vec<std::path::PathBuf>
 
     #[cfg(not(target_os = "windows"))]
     {
-        vec![dir.join(tool)]
+        vec![dir.join(binary)]
     }
 }
 
@@ -1549,6 +1609,21 @@ fn build_tool_search_paths(tool: &str) -> Vec<std::path::PathBuf> {
         let extra_paths = grok_extra_search_paths(&home, std::env::var_os("GROK_BIN_DIR"));
         for path in extra_paths {
             push_unique_path(&mut search_paths, path);
+        }
+    }
+    if tool == "kimicode" {
+        // Official install script places the binary under $KIMI_CODE_HOME/bin (default ~/.kimi-code/bin).
+        if let Some(override_dir) = crate::settings::get_kimi_code_override_dir() {
+            push_unique_path(&mut search_paths, override_dir.join("bin"));
+        }
+        if !home.as_os_str().is_empty() {
+            push_unique_path(&mut search_paths, home.join(".kimi-code").join("bin"));
+        }
+        if let Some(kimi_home) = std::env::var_os("KIMI_CODE_HOME") {
+            push_unique_path(
+                &mut search_paths,
+                std::path::PathBuf::from(kimi_home).join("bin"),
+            );
         }
     }
     if !home.as_os_str().is_empty() {
@@ -1865,9 +1940,10 @@ fn resolve_path_default(tool: &str) -> Option<std::path::PathBuf> {
         .filter(|s| is_valid_shell(s))
         .unwrap_or_else(|| "sh".to_string());
     let flag = default_flag_for_shell(&shell);
+    let binary = tool_binary_name(tool);
     let out = Command::new(shell)
         .arg(flag)
-        .arg(format!("command -v {tool}"))
+        .arg(format!("command -v {binary}"))
         .output()
         .ok()?;
     if !out.status.success() {
@@ -1884,8 +1960,9 @@ fn resolve_path_default(tool: &str) -> Option<std::path::PathBuf> {
 fn resolve_path_default(tool: &str) -> Option<std::path::PathBuf> {
     use std::os::windows::process::CommandExt;
     use std::process::Command;
+    let binary = tool_binary_name(tool);
     let out = Command::new("cmd")
-        .args(["/C", &format!("where {tool}")])
+        .args(["/C", &format!("where {binary}")])
         .creation_flags(CREATE_NO_WINDOW)
         .output()
         .ok()?;
@@ -1999,6 +2076,7 @@ fn npm_package_for(tool: &str) -> Option<&'static str> {
         "grok" => Some("@xai-official/grok"),
         "opencode" => Some("opencode-ai"),
         "openclaw" => Some("openclaw"),
+        "kimicode" => Some("@moonshot-ai/kimi-code"),
         _ => None,
     }
 }
@@ -2217,7 +2295,7 @@ fn anchored_official_update_command(tool: &str, bin_path: &str) -> Option<String
 fn prefers_official_update(tool: &str, shell: LifecycleCommandShell) -> bool {
     match shell {
         LifecycleCommandShell::Posix => {
-            matches!(tool, "claude" | "opencode" | "openclaw")
+            matches!(tool, "claude" | "opencode" | "openclaw" | "kimicode")
         }
         LifecycleCommandShell::WindowsBatch => {
             matches!(
@@ -2226,7 +2304,8 @@ fn prefers_official_update(tool: &str, shell: LifecycleCommandShell) -> bool {
                 // 安装方式探测失败弹交互 prompt（spawn npm.cmd 没传 shell:true）；静默
                 // lifecycle 没有 stdin 会挂死，Windows 先锚到包管理器路径，等上游修了
                 // 再把 opencode 加回这里。
-                "claude" | "openclaw"
+                // Kimi Code `upgrade` 无交互选项，Windows 可安全静默执行。
+                "claude" | "openclaw" | "kimicode"
             )
         }
     }
@@ -2538,6 +2617,7 @@ fn posix_install_command_for(tool: &str) -> String {
         "grok" => installer_with_npm_fallback(GROK_INSTALL_UNIX, tool),
         "opencode" => installer_with_npm_fallback(OPENCODE_INSTALL_UNIX, tool),
         "hermes" => HERMES_INSTALL_UNIX.to_string(),
+        "kimicode" => installer_with_npm_fallback(KIMICODE_INSTALL_UNIX, tool),
         _ => static_fallback_command_for(tool, ToolLifecycleAction::Install),
     }
 }
@@ -2650,6 +2730,7 @@ fn wsl_distro_for_tool(tool: &str) -> Option<String> {
         "opencode" => crate::settings::get_opencode_override_dir(),
         "openclaw" => crate::settings::get_openclaw_override_dir(),
         "hermes" => crate::settings::get_hermes_override_dir(),
+        "kimicode" => crate::settings::get_kimi_code_override_dir(),
         _ => None,
     }?;
 
@@ -4715,6 +4796,35 @@ mod tests {
         }
 
         #[test]
+        fn kimicode_native_install_uses_cli_upgrade() {
+            // 官方 install.sh 装到 ~/.kimi-code/bin/kimi（独立二进制、无同级 npm）。
+            let cmd = anchored_command_from_paths(
+                "kimicode",
+                "/Users/me/.kimi-code/bin/kimi",
+                "/Users/me/.kimi-code/bin/kimi",
+            );
+            assert_eq!(
+                cmd.as_deref(),
+                Some("/Users/me/.kimi-code/bin/kimi upgrade")
+            );
+        }
+
+        #[test]
+        fn kimicode_npm_install_prefers_cli_upgrade_with_npm_fallback() {
+            let cmd = anchored_command_from_paths(
+                "kimicode",
+                "/Users/me/.nvm/versions/node/v22.14.0/bin/kimi",
+                "/Users/me/.nvm/versions/node/v22.14.0/lib/node_modules/@moonshot-ai/kimi-code/bin/kimi",
+            );
+            assert_eq!(
+                cmd.as_deref(),
+                Some(
+                    "/Users/me/.nvm/versions/node/v22.14.0/bin/kimi upgrade || PATH='/Users/me/.nvm/versions/node/v22.14.0/bin':\"$PATH\" /Users/me/.nvm/versions/node/v22.14.0/bin/npm i -g @moonshot-ai/kimi-code@latest"
+                )
+            );
+        }
+
+        #[test]
         fn opencode_native_install_uses_cli_upgrade_without_package_fallback() {
             // opencode install.sh 装到 ~/.opencode/bin（独立二进制、无同级 npm）：
             // 不能锚定到 `<dir>/npm`（必失败），但可以锚定到 CLI 自身跑官方 upgrade。
@@ -5193,6 +5303,32 @@ mod tests {
                 !fallback.contains('|') && !cmd.contains("python") && !cmd.contains("pip"),
                 "should not depend on pipefail or system Python/pip: {cmd}"
             );
+        }
+
+        #[test]
+        fn kimicode_install_uses_official_installer_with_npm_fallback() {
+            let cmd = install_command_for("kimicode");
+            assert!(
+                cmd.starts_with("bash -c 'tmp=$(mktemp) && curl -fsSL ")
+                    && cmd.contains("code.kimi.com/kimi-code/install.sh")
+                    && cmd.contains("|| npm i -g @moonshot-ai/kimi-code@latest"),
+                "should use official installer with npm fallback: {cmd}"
+            );
+        }
+
+        #[test]
+        fn kimicode_update_fallback_uses_cli_upgrade_then_npm() {
+            let cmd = static_fallback_command("kimicode");
+            assert_eq!(
+                cmd,
+                "kimi upgrade || npm i -g @moonshot-ai/kimi-code@latest"
+            );
+        }
+
+        #[test]
+        fn kimicode_binary_name_differs_from_tool_id() {
+            assert_eq!(tool_binary_name("kimicode"), "kimi");
+            assert_eq!(tool_binary_name("hermes"), "hermes");
         }
     }
 

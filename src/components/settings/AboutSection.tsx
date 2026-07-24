@@ -67,6 +67,7 @@ const TOOL_NAMES = [
   "opencode",
   "openclaw",
   "hermes",
+  "kimicode",
 ] as const;
 type ToolName = (typeof TOOL_NAMES)[number];
 type ToolLifecycleAction = "install" | "update";
@@ -111,6 +112,8 @@ const posixScriptInstallCommand = (url: string) =>
 
 const HERMES_WINDOWS_INSTALL_SCRIPT =
   "irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1 | iex";
+const KIMICODE_WINDOWS_INSTALL_SCRIPT =
+  "irm https://code.kimi.com/kimi-code/install.ps1 | iex";
 
 const powershellEncodedCommand = (script: string): string => {
   let binary = "";
@@ -123,6 +126,9 @@ const powershellEncodedCommand = (script: string): string => {
 
 const HERMES_WINDOWS_INSTALL_COMMAND = `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${powershellEncodedCommand(
   HERMES_WINDOWS_INSTALL_SCRIPT,
+)}`;
+const KIMICODE_WINDOWS_INSTALL_COMMAND = `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${powershellEncodedCommand(
+  KIMICODE_WINDOWS_INSTALL_SCRIPT,
 )}`;
 
 const POSIX_ONE_CLICK_INSTALL_COMMANDS = `# Claude Code
@@ -138,7 +144,9 @@ ${posixScriptInstallCommand("https://opencode.ai/install")} || npm i -g opencode
 # OpenClaw
 npm i -g openclaw@latest
 # Hermes
-${posixScriptInstallCommand("https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh")}`;
+${posixScriptInstallCommand("https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh")}
+# Kimi Code
+${posixScriptInstallCommand("https://code.kimi.com/kimi-code/install.sh")} || npm i -g @moonshot-ai/kimi-code@latest`;
 
 const WINDOWS_ONE_CLICK_INSTALL_COMMANDS = `# Claude Code
 npm i -g @anthropic-ai/claude-code@latest
@@ -153,7 +161,9 @@ npm i -g opencode-ai@latest
 # OpenClaw
 npm i -g openclaw@latest
 # Hermes
-${HERMES_WINDOWS_INSTALL_COMMAND}`;
+${HERMES_WINDOWS_INSTALL_COMMAND}
+# Kimi Code
+${KIMICODE_WINDOWS_INSTALL_COMMAND} || npm i -g @moonshot-ai/kimi-code@latest`;
 
 const ONE_CLICK_INSTALL_COMMANDS = isWindows()
   ? WINDOWS_ONE_CLICK_INSTALL_COMMANDS
@@ -167,6 +177,7 @@ const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
   opencode: "OpenCode",
   openclaw: "OpenClaw",
   hermes: "Hermes",
+  kimicode: "Kimi Code",
 };
 
 // 后端返回的 tool 是 string；这里收敛唯一的 ToolName 断言与兜底，供升级确认
@@ -183,6 +194,7 @@ const TOOL_APP_IDS: Record<ToolName, AppId> = {
   opencode: "opencode",
   openclaw: "openclaw",
   hermes: "hermes",
+  kimicode: "kimicode",
 };
 
 // 工具版本探测代价高：每个工具一次 `--version` 子进程 + 一次 npm/github/pypi 网络请求。
