@@ -160,7 +160,10 @@ export function AddProviderDialog({
 
       // OpenCode/OpenClaw: pass providerKey for ID generation
       if (
-        (appId === "opencode" || appId === "openclaw" || appId === "hermes") &&
+        (appId === "opencode" ||
+          appId === "openclaw" ||
+          appId === "hermes" ||
+          appId === "kimicode") &&
         values.providerKey
       ) {
         providerData.providerKey = values.providerKey;
@@ -285,6 +288,12 @@ export function AddProviderDialog({
           }
         } else if (appId === "hermes") {
           if (parsedConfig.base_url) {
+            addUrl(parsedConfig.base_url as string);
+          }
+        } else if (appId === "kimicode") {
+          if (parsedConfig.baseUrl) {
+            addUrl(parsedConfig.baseUrl as string);
+          } else if (parsedConfig.base_url) {
             addUrl(parsedConfig.base_url as string);
           }
         }

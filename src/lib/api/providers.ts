@@ -204,6 +204,20 @@ export const providersApi = {
   async importHermesFromLive(): Promise<number> {
     return await invoke("import_hermes_providers_from_live");
   },
+
+  /**
+   * 获取 Kimi Code live 配置中的供应商 ID 列表
+   */
+  async getKimiCodeLiveProviderIds(): Promise<string[]> {
+    return await invoke("get_kimicode_live_provider_ids");
+  },
+
+  /**
+   * 从 Kimi Code live 配置导入供应商到数据库
+   */
+  async importKimiCodeFromLive(): Promise<number> {
+    return await invoke("import_kimicode_providers_from_live");
+  },
 };
 
 // ============================================================================

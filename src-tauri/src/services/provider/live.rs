@@ -186,6 +186,8 @@ pub(crate) fn provider_exists_in_live_config(
             .map(|providers| providers.contains_key(provider_id)),
         AppType::Hermes => crate::hermes_config::get_providers()
             .map(|providers| providers.contains_key(provider_id)),
+        AppType::KimiCode => crate::kimi_code_config::get_providers()
+            .map(|providers| providers.contains_key(provider_id)),
         _ => Ok(false),
     }
 }
@@ -526,7 +528,7 @@ fn settings_contain_common_config(app_type: &AppType, settings: &Value, snippet:
         AppType::GrokBuild
         | AppType::OpenCode
         | AppType::OpenClaw
-        | AppType::Hermes
+        | AppType::Hermes | AppType::KimiCode
         | AppType::ClaudeDesktop => false,
     }
 }
@@ -600,7 +602,7 @@ pub(crate) fn remove_common_config_from_settings(
         AppType::GrokBuild
         | AppType::OpenCode
         | AppType::OpenClaw
-        | AppType::Hermes
+        | AppType::Hermes | AppType::KimiCode
         | AppType::ClaudeDesktop => Ok(settings.clone()),
     }
 }
@@ -659,7 +661,7 @@ fn apply_common_config_to_settings(
         AppType::GrokBuild
         | AppType::OpenCode
         | AppType::OpenClaw
-        | AppType::Hermes
+        | AppType::Hermes | AppType::KimiCode
         | AppType::ClaudeDesktop => Ok(settings.clone()),
     }
 }
@@ -1162,6 +1164,10 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
             crate::hermes_config::set_provider(&provider.id, provider.settings_config.clone())?;
             log::debug!("Hermes provider '{}' written to live config", provider.id);
         }
+        AppType::KimiCode => {
+            crate::kimi_code_config::set_provider(&provider.id, provider.settings_config.clone())?;
+            log::debug!("Kimi Code provider '{}' written to live config", provider.id);
+        }
     }
     Ok(())
 }
@@ -1417,6 +1423,17 @@ pub fn read_live_settings(app_type: AppType) -> Result<Value, AppError> {
             let config = crate::hermes_config::yaml_to_json(&yaml_config)?;
             Ok(config)
         }
+        AppType::KimiCode => {
+            let config_path = crate::kimi_code_config::get_kimi_code_config_path();
+            if !config_path.exists() {
+                return Err(AppError::localized(
+                    "kimicode.config.missing",
+                    "Kimi Code 配置文件不存在",
+                    "Kimi Code configuration file not found",
+                ));
+            }
+            crate::kimi_code_config::read_live_settings()
+        }
     }
 }
 
@@ -1526,7 +1543,7 @@ pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool
             })
         }
         // OpenCode, OpenClaw and Hermes use additive mode and are handled by early return above
-        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => {
+        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::KimiCode => {
             unreachable!("additive mode apps are handled by early return")
         }
     };
@@ -1685,23 +1702,137 @@ pub(crate) fn write_gemini_live(provider: &Provider) -> Result<(), AppError> {
     Ok(())
 }
 
-/// Remove an OpenCode provider from the live configuration
-///
-/// This is specific to OpenCode's additive mode - removing a provider
-/// from the opencode.json file.
-pub(crate) fn remove_opencode_provider_from_live(provider_id: &str) -> Result<(), AppError> {
-    use crate::opencode_config;
+/// Remove a provider from the live config for any additive-mode app.
+pub(crate) fn remove_additive_provider_from_live(
+    app_type: &AppType,
+    provider_id: &str,
+) -> Result<(), AppError> {
+    match app_type {
+        AppType::OpenCode => {
+            use crate::opencode_config;
+            if !opencode_config::get_opencode_dir().exists() {
+                log::debug!(
+                    "OpenCode config directory doesn't exist, skipping removal of '{provider_id}'"
+                );
+                return Ok(());
+            }
+            opencode_config::remove_provider(provider_id)?;
+            log::info!("OpenCode provider '{provider_id}' removed from live config");
+            Ok(())
+        }
+        AppType::OpenClaw => {
+            use crate::openclaw_config;
+            if !openclaw_config::get_openclaw_dir().exists() {
+                log::debug!(
+                    "OpenClaw config directory doesn't exist, skipping removal of '{provider_id}'"
+                );
+                return Ok(());
+            }
+            openclaw_config::remove_provider(provider_id)?;
+            log::info!("OpenClaw provider '{provider_id}' removed from live config");
+            Ok(())
+        }
+        AppType::Hermes => {
+            use crate::hermes_config;
+            if !hermes_config::get_hermes_dir().exists() {
+                log::debug!(
+                    "Hermes config directory doesn't exist, skipping removal of '{provider_id}'"
+                );
+                return Ok(());
+            }
+            hermes_config::remove_provider(provider_id)?;
+            log::info!("Hermes provider '{provider_id}' removed from live config");
+            Ok(())
+        }
+        AppType::KimiCode => {
+            use crate::kimi_code_config;
+            if !kimi_code_config::get_kimi_code_dir().exists() {
+                log::debug!(
+                    "Kimi Code config directory doesn't exist, skipping removal of '{provider_id}'"
+                );
+                return Ok(());
+            }
+            kimi_code_config::remove_provider(provider_id)?;
+            log::info!("Kimi Code provider '{provider_id}' removed from live config");
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
 
-    // Check if OpenCode config directory exists
-    if !opencode_config::get_opencode_dir().exists() {
-        log::debug!("OpenCode config directory doesn't exist, skipping removal of '{provider_id}'");
-        return Ok(());
+/// Import simple additive providers (id → settings JSON map) into the DB.
+///
+/// Shared by Hermes / Kimi Code (and similar). OpenCode keeps a typed path
+/// because it needs display-name extraction from structured config.
+fn import_additive_map_providers_from_live(
+    state: &AppState,
+    app: &str,
+    providers: serde_json::Map<String, Value>,
+    is_readonly: impl Fn(&str) -> bool,
+) -> Result<usize, AppError> {
+    if providers.is_empty() {
+        return Ok(0);
     }
 
-    opencode_config::remove_provider(provider_id)?;
-    log::info!("OpenCode provider '{provider_id}' removed from live config");
+    let mut imported = 0;
+    let mut updated = 0;
+    let existing_ids = state.db.get_provider_ids(app)?;
 
-    Ok(())
+    for (name, config) in providers {
+        if name.trim().is_empty() {
+            log::warn!("Skipping {app} provider with empty name");
+            continue;
+        }
+
+        let readonly = is_readonly(&name);
+
+        if existing_ids.contains(&name) {
+            match state.db.get_provider_by_id(&name, app) {
+                Ok(Some(existing)) => {
+                    if existing.settings_config != config {
+                        let mut provider = existing;
+                        provider.settings_config = config;
+                        if let Err(e) = state.db.save_provider(app, &provider) {
+                            log::warn!("Failed to update {app} provider '{name}' from live: {e}");
+                        } else {
+                            updated += 1;
+                            log::info!("Updated {app} provider '{name}' from live config");
+                        }
+                    }
+                }
+                Ok(None) => {
+                    log::warn!("{app} provider '{name}' disappeared while importing live config")
+                }
+                Err(e) => log::warn!("Failed to look up {app} provider '{name}': {e}"),
+            }
+            continue;
+        }
+
+        let mut provider = Provider::with_id(name.clone(), name.clone(), config, None);
+        provider.meta = Some(crate::provider::ProviderMeta {
+            live_config_managed: Some(!readonly),
+            ..Default::default()
+        });
+        if readonly {
+            provider.category = Some("official".to_string());
+        }
+
+        if let Err(e) = state.db.save_provider(app, &provider) {
+            log::warn!("Failed to import {app} provider '{name}': {e}");
+            continue;
+        }
+
+        imported += 1;
+        log::info!("Imported {app} provider '{name}' from live config");
+    }
+
+    Ok(imported + updated)
+}
+
+/// Remove an OpenCode provider from the live configuration (compat wrapper).
+#[allow(dead_code)]
+pub(crate) fn remove_opencode_provider_from_live(provider_id: &str) -> Result<(), AppError> {
+    remove_additive_provider_from_live(&AppType::OpenCode, provider_id)
 }
 
 /// Import all providers from OpenCode live config to database
@@ -1867,110 +1998,57 @@ pub fn import_openclaw_providers_from_live(state: &AppState) -> Result<usize, Ap
     Ok(imported + updated)
 }
 
-/// Import all providers from Hermes live config to database
-///
-/// This imports existing providers from ~/.hermes/config.yaml
-/// into the CC Switch database. Each provider found will be added to the
-/// database with is_current set to false.
+/// Import all providers from Hermes live config to database.
 pub fn import_hermes_providers_from_live(state: &AppState) -> Result<usize, AppError> {
-    use crate::hermes_config;
+    let providers = crate::hermes_config::get_providers()?;
+    import_additive_map_providers_from_live(state, "hermes", providers, |name| {
+        // Hermes dict-only overlays are marked in settings; treat none as readonly here
+        // (writable custom_providers list is what get_providers returns for edits).
+        let _ = name;
+        false
+    })
+}
 
-    let providers = hermes_config::get_providers()?;
-    if providers.is_empty() {
-        return Ok(0);
-    }
-
-    let mut imported = 0;
-    let mut updated = 0;
-    let existing_ids = state.db.get_provider_ids("hermes")?;
-
-    for (name, config) in providers {
-        // Validate: skip entries with empty name
-        if name.trim().is_empty() {
-            log::warn!("Skipping Hermes provider with empty name");
-            continue;
-        }
-
-        if existing_ids.contains(&name) {
-            match state.db.get_provider_by_id(&name, "hermes") {
-                Ok(Some(existing)) => {
-                    if existing.settings_config != config {
-                        let mut provider = existing;
-                        provider.settings_config = config;
-                        if let Err(e) = state.db.save_provider("hermes", &provider) {
-                            log::warn!(
-                                "Failed to update Hermes provider '{name}' from live config: {e}"
-                            );
-                        } else {
-                            updated += 1;
-                            log::info!("Updated Hermes provider '{name}' from live config");
-                        }
-                    }
+/// Import all providers from Kimi Code live config to database.
+pub fn import_kimicode_providers_from_live(state: &AppState) -> Result<usize, AppError> {
+    use crate::kimi_code_config;
+    let providers = kimi_code_config::get_providers()?;
+    let count = import_additive_map_providers_from_live(
+        state,
+        "kimicode",
+        providers,
+        |name| kimi_code_config::is_managed_provider_id(name),
+    )?;
+    // Stamp managed imports with the kimi icon for the UI.
+    if count > 0 {
+        if let Ok(all) = state.db.get_all_providers("kimicode") {
+            for (id, mut provider) in all {
+                if kimi_code_config::is_managed_provider_id(&id) && provider.icon.is_none() {
+                    provider.icon = Some("kimi".to_string());
+                    let _ = state.db.save_provider("kimicode", &provider);
                 }
-                Ok(None) => {
-                    log::warn!("Hermes provider '{name}' disappeared while importing live config")
-                }
-                Err(e) => log::warn!("Failed to look up Hermes provider '{name}': {e}"),
             }
-            continue;
         }
-
-        // Create provider
-        let mut provider = Provider::with_id(name.clone(), name.clone(), config, None);
-        provider.meta = Some(crate::provider::ProviderMeta {
-            live_config_managed: Some(true),
-            ..Default::default()
-        });
-
-        // Save to database
-        if let Err(e) = state.db.save_provider("hermes", &provider) {
-            log::warn!("Failed to import Hermes provider '{name}': {e}");
-            continue;
-        }
-
-        imported += 1;
-        log::info!("Imported Hermes provider '{name}' from live config");
     }
-
-    Ok(imported + updated)
+    Ok(count)
 }
 
-/// Remove a Hermes provider from live config
-///
-/// This removes a specific provider from ~/.hermes/config.yaml
-/// without affecting other providers in the file.
+/// Remove a Hermes provider from live config (compat wrapper).
+#[allow(dead_code)]
 pub fn remove_hermes_provider_from_live(provider_id: &str) -> Result<(), AppError> {
-    use crate::hermes_config;
-
-    // Check if Hermes config directory exists
-    if !hermes_config::get_hermes_dir().exists() {
-        log::debug!("Hermes config directory doesn't exist, skipping removal of '{provider_id}'");
-        return Ok(());
-    }
-
-    hermes_config::remove_provider(provider_id)?;
-    log::info!("Hermes provider '{provider_id}' removed from live config");
-
-    Ok(())
+    remove_additive_provider_from_live(&AppType::Hermes, provider_id)
 }
 
-/// Remove an OpenClaw provider from live config
-///
-/// This removes a specific provider from ~/.openclaw/openclaw.json
-/// without affecting other providers in the file.
+/// Remove a Kimi Code provider from live config (compat wrapper).
+#[allow(dead_code)]
+pub fn remove_kimicode_provider_from_live(provider_id: &str) -> Result<(), AppError> {
+    remove_additive_provider_from_live(&AppType::KimiCode, provider_id)
+}
+
+/// Remove an OpenClaw provider from live config (compat wrapper).
+#[allow(dead_code)]
 pub fn remove_openclaw_provider_from_live(provider_id: &str) -> Result<(), AppError> {
-    use crate::openclaw_config;
-
-    // Check if OpenClaw config directory exists
-    if !openclaw_config::get_openclaw_dir().exists() {
-        log::debug!("OpenClaw config directory doesn't exist, skipping removal of '{provider_id}'");
-        return Ok(());
-    }
-
-    openclaw_config::remove_provider(provider_id)?;
-    log::info!("OpenClaw provider '{provider_id}' removed from live config");
-
-    Ok(())
+    remove_additive_provider_from_live(&AppType::OpenClaw, provider_id)
 }
 
 #[cfg(test)]

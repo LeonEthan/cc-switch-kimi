@@ -50,9 +50,15 @@ import {
   hermesProviderPresets,
   type HermesProviderPreset,
 } from "@/config/hermesProviderPresets";
+import {
+  isKimiCodeManagedProvider,
+  kimiCodeProviderPresets,
+  type KimiCodeProviderPreset,
+} from "@/config/kimiCodeProviderPresets";
 import { OpenCodeFormFields } from "./OpenCodeFormFields";
 import { OpenClawFormFields } from "./OpenClawFormFields";
 import { HermesFormFields } from "./HermesFormFields";
+import { KimiCodeFormFields } from "./KimiCodeFormFields";
 import type { UniversalProviderPreset } from "@/config/universalProviderPresets";
 import {
   applyTemplateValues,
@@ -105,6 +111,7 @@ import {
   useOmoDraftState,
   useOpenclawFormState,
   useHermesFormState,
+  useKimiCodeFormState,
   useCopilotAuth,
   useCodexOauth,
   useXaiOauth,
@@ -123,6 +130,8 @@ import { HERMES_DEFAULT_CONFIG } from "./hooks/useHermesFormState";
 import { resolveManagedAccountId } from "@/lib/authBinding";
 import { useOpenClawLiveProviderIds } from "@/hooks/useOpenClaw";
 import { useHermesLiveProviderIds } from "@/hooks/useHermes";
+import { useKimiCodeLiveProviderIds } from "@/hooks/useKimiCode";
+import { validateAdditiveProviderKey } from "./helpers/additiveProviderKey";
 
 type PresetEntry = {
   id: string;
@@ -132,7 +141,8 @@ type PresetEntry = {
     | GeminiProviderPreset
     | OpenCodeProviderPreset
     | OpenClawProviderPreset
-    | HermesProviderPreset;
+    | HermesProviderPreset
+    | KimiCodeProviderPreset;
 };
 
 export const normalizeCodexCatalogModelsForSave = (
@@ -708,6 +718,11 @@ function ProviderFormFull({
         id: `hermes-${index}`,
         preset,
       }));
+    } else if (appId === "kimicode") {
+      return kimiCodeProviderPresets.map<PresetEntry>((preset, index) => ({
+        id: `kimicode-${index}`,
+        preset,
+      }));
     }
     return providerPresets
       .filter((p) => !p.hidden)
@@ -926,6 +941,18 @@ function ProviderFormFull({
     isLoading: isHermesLiveProviderIdsLoading,
   } = useHermesLiveProviderIds(appId === "hermes");
 
+  const kimiCodeForm = useKimiCodeFormState({
+    initialData,
+    appId,
+    providerId,
+    onSettingsConfigChange: (config) => form.setValue("settingsConfig", config),
+    getSettingsConfig: () => form.getValues("settingsConfig"),
+  });
+  const {
+    data: kimiCodeLiveProviderIds = [],
+    isLoading: isKimiCodeLiveProviderIdsLoading,
+  } = useKimiCodeLiveProviderIds(appId === "kimicode");
+
   const additiveExistingProviderKeys = useMemo(() => {
     if (appId === "opencode" && !isAnyOmoCategory) {
       return Array.from(
@@ -958,6 +985,16 @@ function ProviderFormFull({
       );
     }
 
+    if (appId === "kimicode") {
+      return Array.from(
+        new Set(
+          [...kimiCodeForm.existingKeys, ...kimiCodeLiveProviderIds].filter(
+            (key) => key !== providerId,
+          ),
+        ),
+      );
+    }
+
     return [];
   }, [
     appId,
@@ -965,6 +1002,8 @@ function ProviderFormFull({
     hermesForm.existingHermesKeys,
     hermesLiveProviderIds,
     isAnyOmoCategory,
+    kimiCodeForm.existingKeys,
+    kimiCodeLiveProviderIds,
     openclawForm.existingOpenclawKeys,
     openclawLiveProviderIds,
     opencodeLiveProviderIds,
@@ -982,12 +1021,16 @@ function ProviderFormFull({
     if (appId === "hermes") {
       return isHermesLiveProviderIdsLoading;
     }
+    if (appId === "kimicode") {
+      return isKimiCodeLiveProviderIdsLoading;
+    }
     return false;
   }, [
     appId,
     isAnyOmoCategory,
     isEditMode,
     isHermesLiveProviderIdsLoading,
+    isKimiCodeLiveProviderIdsLoading,
     isOpenclawLiveProviderIdsLoading,
     isOpencodeLiveProviderIdsLoading,
   ]);
@@ -1003,12 +1046,16 @@ function ProviderFormFull({
     if (appId === "hermes") {
       return hermesLiveProviderIds.includes(providerId);
     }
+    if (appId === "kimicode") {
+      return kimiCodeLiveProviderIds.includes(providerId);
+    }
     return false;
   }, [
     appId,
     hermesLiveProviderIds,
     isAnyOmoCategory,
     isEditMode,
+    kimiCodeLiveProviderIds,
     openclawLiveProviderIds,
     opencodeLiveProviderIds,
     providerId,
@@ -1075,90 +1122,69 @@ function ProviderFormFull({
       return;
     }
 
-    // opencode / openclaw / hermes: providerKey 相关
-    // A 类（空）归到 issues；B 类（正则不合法 / 重复 / 状态加载中）仍硬拒绝
-    const keyPattern = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+    // Additive apps share one key-validation path (opencode / openclaw / hermes / kimicode).
+    const additiveKey =
+      appId === "opencode" && !isAnyOmoCategory
+        ? {
+            key: opencodeForm.opencodeProviderKey,
+            required: "opencode.providerKeyRequired",
+            invalid: "opencode.providerKeyInvalid",
+            duplicate: "opencode.providerKeyDuplicate",
+          }
+        : appId === "openclaw"
+          ? {
+              key: openclawForm.openclawProviderKey,
+              required: "openclaw.providerKeyRequired",
+              invalid: "openclaw.providerKeyInvalid",
+              duplicate: "openclaw.providerKeyDuplicate",
+            }
+          : appId === "hermes"
+            ? {
+                key: hermesForm.hermesProviderKey,
+                required: "hermes.form.providerKeyRequired",
+                invalid: "hermes.form.providerKeyInvalid",
+                duplicate: "hermes.form.providerKeyDuplicate",
+              }
+            : appId === "kimicode"
+              ? {
+                  key: kimiCodeForm.providerKey,
+                  required: "kimicode.form.providerKeyRequired",
+                  invalid: "kimicode.form.providerKeyInvalid",
+                  duplicate: "kimicode.form.providerKeyDuplicate",
+                }
+              : null;
 
-    if (appId === "opencode" && !isAnyOmoCategory) {
-      // providerKey 是 opencode / openclaw / hermes 的主键 ID，空或格式不合法
-      // 都属于完整性约束，保留硬拒绝（mutations 层也会 throw，软化只会让错误更晦涩）
-      if (!opencodeForm.opencodeProviderKey.trim()) {
-        toast.error(t("opencode.providerKeyRequired"));
-        return;
-      }
-      if (!keyPattern.test(opencodeForm.opencodeProviderKey)) {
-        toast.error(t("opencode.providerKeyInvalid"));
-        return;
-      }
-      if (isProviderKeyLockStateLoading) {
-        toast.error(
-          t("providerForm.providerKeyStatusLoading", {
-            defaultValue: "正在加载供应商标识状态，请稍后再试",
-          }),
-        );
+    if (additiveKey) {
+      const result = validateAdditiveProviderKey({
+        key: additiveKey.key,
+        isLocked: isProviderKeyLocked,
+        isLoading: isProviderKeyLockStateLoading,
+        existingKeys: additiveExistingProviderKeys,
+      });
+      if (!result.ok) {
+        const msg =
+          result.reason === "required"
+            ? t(additiveKey.required, { defaultValue: "请输入供应商标识" })
+            : result.reason === "invalid"
+              ? t(additiveKey.invalid, {
+                  defaultValue: "供应商标识格式无效",
+                })
+              : result.reason === "loading"
+                ? t("providerForm.providerKeyStatusLoading", {
+                    defaultValue: "正在加载供应商标识状态，请稍后再试",
+                  })
+                : t(additiveKey.duplicate, {
+                    defaultValue: "供应商标识已存在",
+                  });
+        toast.error(msg);
         return;
       }
       if (
-        !isProviderKeyLocked &&
-        additiveExistingProviderKeys.includes(opencodeForm.opencodeProviderKey)
+        appId === "opencode" &&
+        !isAnyOmoCategory &&
+        Object.keys(opencodeForm.opencodeModels).length === 0
       ) {
-        toast.error(t("opencode.providerKeyDuplicate"));
-        return;
-      }
-      if (Object.keys(opencodeForm.opencodeModels).length === 0) {
         issues.push(t("opencode.modelsRequired"));
-      }
-    }
-
-    if (appId === "openclaw") {
-      if (!openclawForm.openclawProviderKey.trim()) {
-        toast.error(t("openclaw.providerKeyRequired"));
-        return;
-      }
-      if (!keyPattern.test(openclawForm.openclawProviderKey)) {
-        toast.error(t("openclaw.providerKeyInvalid"));
-        return;
-      }
-      if (isProviderKeyLockStateLoading) {
-        toast.error(
-          t("providerForm.providerKeyStatusLoading", {
-            defaultValue: "正在加载供应商标识状态，请稍后再试",
-          }),
-        );
-        return;
-      }
-      if (
-        !isProviderKeyLocked &&
-        additiveExistingProviderKeys.includes(openclawForm.openclawProviderKey)
-      ) {
-        toast.error(t("openclaw.providerKeyDuplicate"));
-        return;
-      }
-    }
-
-    if (appId === "hermes") {
-      if (!hermesForm.hermesProviderKey.trim()) {
-        toast.error(t("hermes.form.providerKeyRequired"));
-        return;
-      }
-      if (!keyPattern.test(hermesForm.hermesProviderKey)) {
-        toast.error(t("hermes.form.providerKeyInvalid"));
-        return;
-      }
-      if (isProviderKeyLockStateLoading) {
-        toast.error(
-          t("providerForm.providerKeyStatusLoading", {
-            defaultValue: "正在加载供应商标识状态，请稍后再试",
-          }),
-        );
-        return;
-      }
-      if (
-        !isProviderKeyLocked &&
-        additiveExistingProviderKeys.includes(hermesForm.hermesProviderKey)
-      ) {
-        toast.error(t("hermes.form.providerKeyDuplicate"));
-        return;
       }
     }
 
@@ -1469,6 +1495,8 @@ function ProviderFormFull({
       payload.providerKey = openclawForm.openclawProviderKey;
     } else if (appId === "hermes") {
       payload.providerKey = hermesForm.hermesProviderKey;
+    } else if (appId === "kimicode") {
+      payload.providerKey = kimiCodeForm.providerKey;
     }
 
     if (isAnyOmoCategory && !payload.presetCategory) {
@@ -1906,6 +1934,21 @@ function ProviderFormFull({
 
       hermesForm.resetHermesState(config);
 
+      form.reset({
+        name: preset.nameKey ? t(preset.nameKey) : preset.name,
+        websiteUrl: preset.websiteUrl ?? "",
+        settingsConfig: JSON.stringify(config, null, 2),
+        icon: preset.icon ?? "",
+        iconColor: preset.iconColor ?? "",
+      });
+      return;
+    }
+
+    // Kimi Code preset handling
+    if (appId === "kimicode") {
+      const preset = entry.preset as KimiCodeProviderPreset;
+      const config = preset.settingsConfig;
+      kimiCodeForm.resetState(config);
       form.reset({
         name: preset.nameKey ? t(preset.nameKey) : preset.name,
         websiteUrl: preset.websiteUrl ?? "",
@@ -2448,6 +2491,32 @@ function ProviderFormFull({
             />
           )}
 
+          {/* Kimi Code 专属字段 */}
+          {appId === "kimicode" && (
+            <KimiCodeFormFields
+              providerKey={kimiCodeForm.providerKey}
+              onProviderKeyChange={kimiCodeForm.setProviderKey}
+              providerKeyDisabled={isEditMode && isProviderKeyLocked}
+              providerType={kimiCodeForm.providerType}
+              onProviderTypeChange={kimiCodeForm.handleTypeChange}
+              baseUrl={kimiCodeForm.baseUrl}
+              onBaseUrlChange={kimiCodeForm.handleBaseUrlChange}
+              apiKey={kimiCodeForm.apiKey}
+              onApiKeyChange={kimiCodeForm.handleApiKeyChange}
+              models={kimiCodeForm.models}
+              onModelsChange={kimiCodeForm.handleModelsChange}
+              defaultModelId={kimiCodeForm.defaultModelId}
+              onDefaultModelIdChange={kimiCodeForm.handleDefaultModelIdChange}
+              readOnly={
+                !!providerId &&
+                isKimiCodeManagedProvider(
+                  providerId,
+                  initialData?.settingsConfig,
+                )
+              }
+            />
+          )}
+
           {/* 配置编辑器：Codex、Claude、Gemini 分别使用不同的编辑器 */}
           {appId === "codex" ? (
             <>
@@ -2536,7 +2605,9 @@ function ProviderFormFull({
               </div>
               {settingsConfigErrorField}
             </>
-          ) : appId === "openclaw" || appId === "hermes" ? (
+          ) : appId === "openclaw" ||
+            appId === "hermes" ||
+            appId === "kimicode" ? (
             <>
               <div className="space-y-2">
                 <Label htmlFor="settingsConfig">
@@ -2552,7 +2623,15 @@ function ProviderFormFull({
   "base_url": "https://api.example.com/v1",
   "api_key": ""
 }`
-                      : `{
+                      : appId === "kimicode"
+                        ? `{
+  "type": "kimi",
+  "baseUrl": "https://api.kimi.com/coding/v1",
+  "apiKey": "",
+  "defaultModelId": "k3",
+  "models": [{ "id": "k3", "model": "k3", "maxContextSize": 1048576 }]
+}`
+                        : `{
   "baseUrl": "https://api.example.com/v1",
   "apiKey": "your-api-key-here",
   "api": "openai-completions",

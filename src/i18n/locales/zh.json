@@ -873,7 +873,9 @@
       "defaultCostMultiplierRequired": "默认倍率不能为空",
       "defaultCostMultiplierInvalid": "默认倍率格式不正确"
     },
-    "saveFailedGeneric": "保存失败，请重试"
+    "saveFailedGeneric": "保存失败，请重试",
+    "kimiCodeConfigDir": "Kimi Code 配置目录",
+    "browsePlaceholderKimiCode": "~/.kimi-code"
   },
   "apps": {
     "claude": "Claude",
@@ -885,7 +887,8 @@
     "grokbuild": "Grok Build",
     "opencode": "OpenCode",
     "openclaw": "OpenClaw",
-    "hermes": "Hermes"
+    "hermes": "Hermes",
+    "kimicode": "Kimi Code"
   },
   "grokBuild": {
     "apiBackend": "API Backend",
@@ -3017,5 +3020,21 @@
     "expiredHint": "请运行 {{tool}} 命令刷新登录",
     "queryFailed": "查询失败",
     "refresh": "刷新"
+  },
+  "kimicode": {
+    "form": {
+      "providerKey": "供应商 Key",
+      "providerKeyHint": "对应 ~/.kimi-code/config.toml 中的 [providers.<key>]",
+      "type": "协议类型",
+      "baseUrl": "Base URL",
+      "models": "模型列表",
+      "modelId": "别名 / ID",
+      "modelApi": "API 模型名",
+      "displayName": "显示名称",
+      "maxContext": "最大上下文",
+      "defaultModel": "默认模型",
+      "selectModel": "选择模型",
+      "defaultModelHint": "切换到此供应商时写入 default_model"
+    }
   }
 }

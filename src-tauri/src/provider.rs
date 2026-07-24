@@ -179,6 +179,26 @@ impl Provider {
                 str_at(settings.get("base_url")),
                 str_at(settings.get("api_key")),
             ),
+            // Kimi Code settingsConfig uses camelCase JSON (apiKey / baseUrl).
+            AppType::KimiCode => {
+                let base_url = {
+                    let camel = str_at(settings.get("baseUrl"));
+                    if camel.is_empty() {
+                        str_at(settings.get("base_url"))
+                    } else {
+                        camel
+                    }
+                };
+                let api_key = {
+                    let camel = str_at(settings.get("apiKey"));
+                    if camel.is_empty() {
+                        str_at(settings.get("api_key"))
+                    } else {
+                        camel
+                    }
+                };
+                (base_url, api_key)
+            }
             // OpenClaw (openclaw.json) flattens credentials at the top level, camelCase.
             AppType::OpenClaw => (
                 str_at(settings.get("baseUrl")),
@@ -1487,6 +1507,21 @@ mod tests {
             (
                 "https://api.deepseek.com".to_string(),
                 "sk-hermes".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn resolve_credentials_kimicode_camel_case() {
+        let p = provider_with(json!({
+            "baseUrl": "https://api.kimi.com/coding/v1",
+            "apiKey": "sk-kimi",
+        }));
+        assert_eq!(
+            p.resolve_usage_credentials(&AppType::KimiCode),
+            (
+                "https://api.kimi.com/coding/v1".to_string(),
+                "sk-kimi".to_string()
             )
         );
     }

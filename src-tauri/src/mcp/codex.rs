@@ -234,12 +234,8 @@ pub fn import_from_codex(config: &mut MultiAppConfig) -> Result<usize, AppError>
                         name: id.clone(),
                         server: spec_v,
                         apps: McpApps {
-                            claude: false,
                             codex: true,
-                            gemini: false,
-                            grokbuild: false,
-                            opencode: false,
-                            hermes: false,
+                            ..Default::default()
                         },
                         description: None,
                         homepage: None,

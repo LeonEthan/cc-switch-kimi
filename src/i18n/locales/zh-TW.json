@@ -844,7 +844,9 @@
       "defaultCostMultiplierRequired": "預設倍率不能為空",
       "defaultCostMultiplierInvalid": "預設倍率格式不正確"
     },
-    "saveFailedGeneric": "儲存失敗，請重試"
+    "saveFailedGeneric": "儲存失敗，請重試",
+    "kimiCodeConfigDir": "Kimi Code 設定目錄",
+    "browsePlaceholderKimiCode": "~/.kimi-code"
   },
   "apps": {
     "claude": "Claude",
@@ -856,7 +858,8 @@
     "grokbuild": "Grok Build",
     "opencode": "OpenCode",
     "openclaw": "OpenClaw",
-    "hermes": "Hermes"
+    "hermes": "Hermes",
+    "kimicode": "Kimi Code"
   },
   "grokBuild": {
     "apiBackend": "API Backend",
@@ -2989,5 +2992,21 @@
     "expiredHint": "請執行 {{tool}} 命令重新整理登入",
     "queryFailed": "查詢失敗",
     "refresh": "重新整理"
+  },
+  "kimicode": {
+    "form": {
+      "providerKey": "供應商 Key",
+      "providerKeyHint": "對應 ~/.kimi-code/config.toml 中的 [providers.<key>]",
+      "type": "協議類型",
+      "baseUrl": "Base URL",
+      "models": "模型列表",
+      "modelId": "別名 / ID",
+      "modelApi": "API 模型名",
+      "displayName": "顯示名稱",
+      "maxContext": "最大上下文",
+      "defaultModel": "預設模型",
+      "selectModel": "選擇模型",
+      "defaultModelHint": "切換到此供應商時寫入 default_model"
+    }
   }
 }

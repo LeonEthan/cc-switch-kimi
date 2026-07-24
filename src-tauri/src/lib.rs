@@ -17,6 +17,7 @@ mod gemini_mcp;
 mod grok_config;
 pub mod hermes_config;
 mod init_status;
+mod kimi_code_config;
 mod lightweight;
 #[cfg(target_os = "linux")]
 mod linux_fix;
@@ -828,6 +829,13 @@ pub fn run() {
                 Ok(_) => log::debug!("○ No Hermes provider changes from live config"),
                 Err(e) => log::warn!("✗ Failed to import Hermes providers: {e}"),
             }
+            match crate::services::provider::import_kimicode_providers_from_live(&app_state) {
+                Ok(count) if count > 0 => {
+                    log::info!("✓ Synced {count} Kimi Code provider(s) from live config");
+                }
+                Ok(_) => log::debug!("○ No Kimi Code provider changes from live config"),
+                Err(e) => log::warn!("✗ Failed to import Kimi Code providers: {e}"),
+            }
 
             // 2. OMO 配置导入（当数据库中无 OMO provider 时，从本地文件导入）
             {
@@ -945,6 +953,7 @@ pub fn run() {
                     crate::app_config::AppType::OpenCode,
                     crate::app_config::AppType::OpenClaw,
                     crate::app_config::AppType::Hermes,
+                    crate::app_config::AppType::KimiCode,
                 ] {
                     match crate::services::prompt::PromptService::import_from_file_on_first_launch(
                         &app_state,
@@ -1578,6 +1587,11 @@ pub fn run() {
             commands::set_hermes_memory,
             commands::get_hermes_memory_limits,
             commands::set_hermes_memory_enabled,
+            // Kimi Code specific
+            commands::import_kimicode_providers_from_live,
+            commands::get_kimicode_live_provider_ids,
+            commands::get_kimicode_default_model,
+            commands::get_kimicode_default_provider_id,
             // Global upstream proxy
             commands::get_global_proxy_url,
             commands::set_global_proxy_url,

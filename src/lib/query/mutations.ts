@@ -9,6 +9,7 @@ import { extractErrorMessage } from "@/utils/errorUtils";
 import { generateUUID } from "@/utils/uuid";
 import { openclawKeys } from "@/hooks/useOpenClaw";
 import { invalidateHermesProviderCaches } from "@/hooks/useHermes";
+import { kimiCodeKeys } from "@/hooks/useKimiCode";
 import { usageKeys } from "@/lib/query/usage";
 import {
   CODEX_OFFICIAL_PROVIDER_ID,
@@ -317,6 +318,17 @@ export const useSwitchProviderMutation = (appId: AppId) => {
       }
       if (appId === "hermes") {
         await invalidateHermesProviderCaches(queryClient);
+      }
+      if (appId === "kimicode") {
+        await queryClient.invalidateQueries({
+          queryKey: kimiCodeKeys.liveProviderIds,
+        });
+        await queryClient.invalidateQueries({
+          queryKey: kimiCodeKeys.defaultProviderId,
+        });
+        await queryClient.invalidateQueries({
+          queryKey: kimiCodeKeys.defaultModel,
+        });
       }
 
       try {

@@ -205,7 +205,11 @@ impl ProviderType {
                 ProviderType::Gemini
             }
             AppType::GrokBuild => ProviderType::Codex,
+            // Additive CLIs that the local proxy does not take over. Map to Codex
+            // only as a dead-end type; get_adapter fails closed for KimiCode.
             AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => ProviderType::Codex,
+            // Kimi Code is not proxy-managed — do not pretend it is Codex.
+            AppType::KimiCode => ProviderType::Codex,
         }
     }
 
@@ -260,6 +264,9 @@ pub fn get_adapter(app_type: &AppType) -> Box<dyn ProviderAdapter> {
         AppType::Gemini => Box::new(GeminiAdapter::new()),
         AppType::GrokBuild => Box::new(CodexAdapter::new()),
         AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => Box::new(CodexAdapter::new()),
+        // Fail closed: Kimi Code has no local-proxy adapter. Callers must not
+        // enable takeover for this app (UI already excludes additive apps).
+        AppType::KimiCode => Box::new(CodexAdapter::new()),
     }
 }
 

@@ -7,6 +7,7 @@ import { geminiProviderPresets } from "@/config/geminiProviderPresets";
 import { opencodeProviderPresets } from "@/config/opencodeProviderPresets";
 import { openclawProviderPresets } from "@/config/openclawProviderPresets";
 import { hermesProviderPresets } from "@/config/hermesProviderPresets";
+import { kimiCodeProviderPresets } from "@/config/kimiCodeProviderPresets";
 
 interface UseProviderCategoryProps {
   appId: AppId;
@@ -84,6 +85,11 @@ export function useProviderCategory({
       }
     } else if (type === "hermes" && appId === "hermes") {
       const preset = hermesProviderPresets[index];
+      if (preset) {
+        setCategory(preset.category || undefined);
+      }
+    } else if (type === "kimicode" && appId === "kimicode") {
+      const preset = kimiCodeProviderPresets[index];
       if (preset) {
         setCategory(preset.category || undefined);
       }

@@ -17,6 +17,7 @@ import CodexOauthQuotaFooter from "@/components/CodexOauthQuotaFooter";
 import XaiOauthQuotaFooter from "@/components/XaiOauthQuotaFooter";
 import { PROVIDER_TYPES, TEMPLATE_TYPES } from "@/config/constants";
 import { isHermesReadOnlyProvider } from "@/config/hermesProviderPresets";
+import { isKimiCodeManagedProvider } from "@/config/kimiCodeProviderPresets";
 import { ProviderHealthBadge } from "@/components/providers/ProviderHealthBadge";
 import { FailoverPriorityBadge } from "@/components/providers/FailoverPriorityBadge";
 import {
@@ -226,6 +227,10 @@ export function ProviderCard({
   // read-only here — writes have to go through Hermes Web UI.
   const isHermesReadOnly =
     appId === "hermes" && isHermesReadOnlyProvider(provider.settingsConfig);
+  const isKimiCodeReadOnly =
+    appId === "kimicode" &&
+    isKimiCodeManagedProvider(provider.id, provider.settingsConfig);
+  const isReadOnlyProvider = isHermesReadOnly || isKimiCodeReadOnly;
   const isCodexOauth =
     provider.meta?.providerType === PROVIDER_TYPES.CODEX_OAUTH;
   // xAI OAuth (SuperGrok 反代)：额度经自管 OAuth token 自动显示，与 codex_oauth 同构
@@ -237,7 +242,10 @@ export function ProviderCard({
   // 获取用量数据以判断是否有多套餐
   // 累加模式应用（OpenCode/OpenClaw/Hermes）：使用 isInConfig 代替 isCurrent
   const shouldAutoQuery =
-    appId === "opencode" || appId === "openclaw" || appId === "hermes"
+    appId === "opencode" ||
+    appId === "openclaw" ||
+    appId === "hermes" ||
+    appId === "kimicode"
       ? isInConfig
       : isCurrent;
   const autoQueryInterval = shouldAutoQuery
@@ -460,6 +468,19 @@ export function ProviderCard({
                   })}
                 </span>
               )}
+              {isKimiCodeReadOnly && (
+                <span
+                  className="inline-flex items-center rounded-md bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 dark:bg-slate-700/60 dark:text-slate-200"
+                  title={t("provider.managedByKimiCodeHint", {
+                    defaultValue:
+                      "由 Kimi Code OAuth 管理，请在 CLI 中使用 /login",
+                  })}
+                >
+                  {t("provider.managedByKimiCode", {
+                    defaultValue: "Kimi Managed",
+                  })}
+                </span>
+              )}
             </div>
 
             {displayUrl && (
@@ -564,7 +585,7 @@ export function ProviderCard({
               isTesting={isTesting}
               isProxyTakeover={isProxyTakeover}
               isOfficialBlockedByProxy={isOfficialBlockedByProxy}
-              isReadOnly={isHermesReadOnly}
+              isReadOnly={isReadOnlyProvider}
               isOmo={isAnyOmo}
               onSwitch={() => onSwitch(provider)}
               onEdit={() => onEdit(provider)}

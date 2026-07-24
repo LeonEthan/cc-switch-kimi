@@ -69,11 +69,13 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
     opencode: boolean;
     openclaw: boolean;
     hermes: boolean;
+    kimicode: boolean;
   }>(() => {
     if (initialData?.apps) {
       return {
         ...initialData.apps,
         grokbuild: initialData.apps.grokbuild ?? false,
+        kimicode: initialData.apps.kimicode ?? false,
       };
     }
     return {
@@ -84,6 +86,7 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
       opencode: defaultEnabledApps.includes("opencode"),
       openclaw: defaultEnabledApps.includes("openclaw"),
       hermes: defaultEnabledApps.includes("hermes"),
+      kimicode: defaultEnabledApps.includes("kimicode"),
     };
   });
 

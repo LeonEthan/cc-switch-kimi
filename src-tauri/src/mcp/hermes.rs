@@ -312,12 +312,8 @@ pub fn import_from_hermes(config: &mut MultiAppConfig) -> Result<usize, AppError
                     name: id.clone(),
                     server: unified_spec,
                     apps: McpApps {
-                        claude: false,
-                        codex: false,
-                        gemini: false,
-                        grokbuild: false,
-                        opencode: false,
                         hermes: true,
+                        ..Default::default()
                     },
                     description: None,
                     homepage: None,

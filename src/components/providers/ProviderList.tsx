@@ -30,6 +30,10 @@ import {
   useHermesLiveProviderIds,
   useHermesModelConfig,
 } from "@/hooks/useHermes";
+import {
+  useKimiCodeLiveProviderIds,
+  useKimiCodeDefaultProviderId,
+} from "@/hooks/useKimiCode";
 import { useStreamCheck } from "@/hooks/useStreamCheck";
 import { ProviderCard } from "@/components/providers/ProviderCard";
 import { ProviderEmptyState } from "@/components/providers/ProviderEmptyState";
@@ -116,7 +120,15 @@ export function ProviderList({
   const { data: hermesModelConfig } = useHermesModelConfig(appId === "hermes");
   const hermesCurrentProviderId = hermesModelConfig?.provider;
 
-  // 判断供应商是否已添加到配置（累加模式应用：OpenCode/OpenClaw/Hermes）
+  // Kimi Code: live ids + default_model owner for isInConfig / isCurrent
+  const { data: kimiCodeLiveIds } = useKimiCodeLiveProviderIds(
+    appId === "kimicode",
+  );
+  const { data: kimiCodeCurrentProviderId } = useKimiCodeDefaultProviderId(
+    appId === "kimicode",
+  );
+
+  // 判断供应商是否已添加到配置（累加模式应用：OpenCode/OpenClaw/Hermes/KimiCode）
   const isProviderInConfig = useCallback(
     (providerId: string): boolean => {
       if (appId === "opencode") {
@@ -128,9 +140,12 @@ export function ProviderList({
       if (appId === "hermes") {
         return hermesLiveIds?.includes(providerId) ?? false;
       }
+      if (appId === "kimicode") {
+        return kimiCodeLiveIds?.includes(providerId) ?? false;
+      }
       return true; // 其他应用始终返回 true
     },
-    [appId, opencodeLiveIds, openclawLiveIds, hermesLiveIds],
+    [appId, opencodeLiveIds, openclawLiveIds, hermesLiveIds, kimiCodeLiveIds],
   );
 
   // OpenClaw: query default model to determine which provider is default
@@ -221,6 +236,10 @@ export function ProviderList({
       }
       if (appId === "hermes") {
         const count = await providersApi.importHermesFromLive();
+        return count > 0;
+      }
+      if (appId === "kimicode") {
+        const count = await providersApi.importKimiCodeFromLive();
         return count > 0;
       }
       if (appId === "claude-desktop") {
@@ -393,6 +412,9 @@ export function ProviderList({
               isOmoSlim && provider.id === (currentOmoSlimId || "");
             const isHermesCurrent =
               appId === "hermes" && hermesCurrentProviderId === provider.id;
+            const isKimiCodeCurrent =
+              appId === "kimicode" &&
+              kimiCodeCurrentProviderId === provider.id;
             return (
               <SortableProviderCard
                 key={provider.id}
@@ -404,7 +426,9 @@ export function ProviderList({
                       ? isOmoSlimCurrent
                       : appId === "hermes"
                         ? isHermesCurrent
-                        : provider.id === currentProviderId
+                        : appId === "kimicode"
+                          ? isKimiCodeCurrent
+                          : provider.id === currentProviderId
                 }
                 appId={appId}
                 isInConfig={isProviderInConfig(provider.id)}
@@ -431,11 +455,13 @@ export function ProviderList({
                   handleToggleFailover(provider.id, enabled)
                 }
                 activeProviderId={activeProviderId}
-                // OpenClaw: default model / Hermes: model.provider === provider.id
+                // OpenClaw: default model / Hermes: model.provider / Kimi: default_model owner
                 isDefaultModel={
                   appId === "hermes"
                     ? isHermesCurrent
-                    : isProviderDefaultModel(provider.id)
+                    : appId === "kimicode"
+                      ? isKimiCodeCurrent
+                      : isProviderDefaultModel(provider.id)
                 }
                 onSetAsDefault={
                   onSetAsDefault ? () => onSetAsDefault(provider) : undefined

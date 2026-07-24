@@ -152,6 +152,7 @@ pub(crate) fn build_provider_from_request(
         AppType::OpenCode => build_opencode_settings(request),
         AppType::OpenClaw => build_additive_app_settings(request),
         AppType::Hermes => build_hermes_settings(request),
+        AppType::KimiCode => build_kimicode_settings(request),
     };
 
     // Build usage script configuration if provided
@@ -573,6 +574,53 @@ fn build_hermes_settings(request: &DeepLinkImportRequest) -> serde_json::Value {
     json!(config)
 }
 
+/// Build Kimi Code provider settings (camelCase DB/UI fragment).
+fn build_kimicode_settings(request: &DeepLinkImportRequest) -> serde_json::Value {
+    let endpoint = get_primary_endpoint(request);
+    let mut config = serde_json::Map::new();
+
+    config.insert("type".to_string(), json!("kimi"));
+
+    if !endpoint.is_empty() {
+        config.insert("baseUrl".to_string(), json!(endpoint));
+    } else {
+        config.insert(
+            "baseUrl".to_string(),
+            json!("https://api.kimi.com/coding/v1"),
+        );
+    }
+
+    if let Some(api_key) = &request.api_key {
+        config.insert("apiKey".to_string(), json!(api_key));
+    }
+
+    if let Some(model) = &request.model {
+        config.insert(
+            "models".to_string(),
+            json!([{
+                "id": model,
+                "model": model,
+                "displayName": model,
+                "maxContextSize": 262144
+            }]),
+        );
+        config.insert("defaultModelId".to_string(), json!(model));
+    } else {
+        config.insert(
+            "models".to_string(),
+            json!([{
+                "id": "k3",
+                "model": "k3",
+                "displayName": "K3",
+                "maxContextSize": 1048576
+            }]),
+        );
+        config.insert("defaultModelId".to_string(), json!("k3"));
+    }
+
+    json!(config)
+}
+
 // =============================================================================
 // Config Merge Logic
 // =============================================================================
@@ -636,7 +684,7 @@ pub fn parse_and_merge_config(
         "gemini" => merge_gemini_config(&mut merged, &config_value)?,
         "grokbuild" => merge_grokbuild_config(&mut merged, &config_value)?,
         // Additive mode apps use JSON config directly; pass through as-is
-        "openclaw" | "opencode" | "hermes" => {
+        "openclaw" | "opencode" | "hermes" | "kimicode" | "kimi-code" | "kimi" => {
             merge_additive_config(&mut merged, &config_value)?;
         }
         "" => {

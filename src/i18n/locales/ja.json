@@ -873,7 +873,9 @@
       "defaultCostMultiplierRequired": "デフォルト倍率は必須です",
       "defaultCostMultiplierInvalid": "デフォルト倍率の形式が正しくありません"
     },
-    "saveFailedGeneric": "保存に失敗しました。もう一度お試しください"
+    "saveFailedGeneric": "保存に失敗しました。もう一度お試しください",
+    "kimiCodeConfigDir": "Kimi Code 設定ディレクトリ",
+    "browsePlaceholderKimiCode": "~/.kimi-code"
   },
   "apps": {
     "claude": "Claude",
@@ -885,7 +887,8 @@
     "grokbuild": "Grok Build",
     "opencode": "OpenCode",
     "openclaw": "OpenClaw",
-    "hermes": "Hermes"
+    "hermes": "Hermes",
+    "kimicode": "Kimi Code"
   },
   "grokBuild": {
     "apiBackend": "API Backend",
@@ -3017,5 +3020,21 @@
     "expiredHint": "{{tool}}コマンドを実行してログインを更新してください",
     "queryFailed": "クエリに失敗しました",
     "refresh": "更新"
+  },
+  "kimicode": {
+    "form": {
+      "providerKey": "プロバイダーキー",
+      "providerKeyHint": "~/.kimi-code/config.toml の [providers.<key>] に対応",
+      "type": "プロバイダータイプ",
+      "baseUrl": "Base URL",
+      "models": "モデル",
+      "modelId": "エイリアス / ID",
+      "modelApi": "API モデル名",
+      "displayName": "表示名",
+      "maxContext": "最大コンテキスト",
+      "defaultModel": "デフォルトモデル",
+      "selectModel": "モデルを選択",
+      "defaultModelHint": "このプロバイダーに切り替えると default_model に書き込まれます"
+    }
   }
 }
