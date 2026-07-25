@@ -576,18 +576,28 @@ fn build_hermes_settings(request: &DeepLinkImportRequest) -> serde_json::Value {
 
 /// Build Kimi Code provider settings (camelCase DB/UI fragment).
 fn build_kimicode_settings(request: &DeepLinkImportRequest) -> serde_json::Value {
-    let endpoint = get_primary_endpoint(request);
+    let mut endpoint = get_primary_endpoint(request);
     let mut config = serde_json::Map::new();
 
-    config.insert("type".to_string(), json!("kimi"));
-
-    if !endpoint.is_empty() {
-        config.insert("baseUrl".to_string(), json!(endpoint));
-    } else {
+    if endpoint.is_empty() {
+        // No endpoint in the link: fall back to the official Kimi For Coding
+        // endpoint, whose default protocol is Anthropic-compatible.
+        config.insert("type".to_string(), json!("anthropic"));
         config.insert(
             "baseUrl".to_string(),
-            json!("https://api.kimi.com/coding/v1"),
+            json!("https://api.kimi.com/coding/"),
         );
+    } else {
+        // Explicit third-party endpoint: assume OpenAI-compatible (`kimi`),
+        // the most common protocol for relay services; editable after import.
+        config.insert("type".to_string(), json!("kimi"));
+        // Anthropic protocol lives at the root, OpenAI at /v1; mirror that
+        // when the link points at the official coding endpoint.
+        if endpoint.trim_end_matches('/') == "https://api.kimi.com/coding" {
+            config.insert("type".to_string(), json!("anthropic"));
+            endpoint = "https://api.kimi.com/coding/".to_string();
+        }
+        config.insert("baseUrl".to_string(), json!(endpoint));
     }
 
     if let Some(api_key) = &request.api_key {

@@ -124,7 +124,7 @@ pub struct KimiCodeProviderConfig {
 }
 
 fn default_provider_type() -> String {
-    "kimi".to_string()
+    "anthropic".to_string()
 }
 
 impl Default for KimiCodeProviderConfig {
@@ -132,7 +132,7 @@ impl Default for KimiCodeProviderConfig {
         Self {
             r#type: default_provider_type(),
             api_key: None,
-            base_url: Some("https://api.kimi.com/coding/v1".to_string()),
+            base_url: Some("https://api.kimi.com/coding/".to_string()),
             models: vec![KimiCodeModel {
                 id: "k3".to_string(),
                 model: Some("k3".to_string()),

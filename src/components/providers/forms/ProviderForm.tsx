@@ -2625,8 +2625,8 @@ function ProviderFormFull({
 }`
                       : appId === "kimicode"
                         ? `{
-  "type": "kimi",
-  "baseUrl": "https://api.kimi.com/coding/v1",
+  "type": "anthropic",
+  "baseUrl": "https://api.kimi.com/coding/",
   "apiKey": "",
   "defaultModelId": "k3",
   "models": [{ "id": "k3", "model": "k3", "maxContextSize": 1048576 }]

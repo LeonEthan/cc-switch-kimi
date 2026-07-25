@@ -176,7 +176,7 @@ export function KimiCodeFormFields({
           id="kimicode-base-url"
           value={baseUrl}
           onChange={(e) => onBaseUrlChange(e.target.value)}
-          placeholder="https://api.kimi.com/coding/v1"
+          placeholder="https://api.kimi.com/coding/"
           disabled={disabled}
         />
       </div>

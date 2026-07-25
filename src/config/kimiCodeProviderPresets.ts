@@ -80,8 +80,9 @@ export const kimiCodeProviderPresets: KimiCodeProviderPreset[] = [
     category: "cn_official",
     icon: "kimi",
     settingsConfig: {
-      type: "kimi",
-      baseUrl: "https://api.kimi.com/coding/v1",
+      // Anthropic-compatible endpoint; OpenAI-compatible is at /coding/v1
+      type: "anthropic",
+      baseUrl: "https://api.kimi.com/coding/",
       apiKey: "",
       defaultModelId: "k3",
       models: [
@@ -91,6 +92,16 @@ export const kimiCodeProviderPresets: KimiCodeProviderPreset[] = [
           displayName: "K3",
           maxContextSize: 1048576,
           capabilities: KIMI_CAPABILITIES,
+          supportEfforts: ["low", "high", "max"],
+          defaultEffort: "high",
+        },
+        {
+          // 256K variant of K3: image input only (no video)
+          id: "k3-256k",
+          model: "k3-256k",
+          displayName: "K3 (256K)",
+          maxContextSize: 262144,
+          capabilities: ["thinking", "always_thinking", "image_in", "tool_use"],
           supportEfforts: ["low", "high", "max"],
           defaultEffort: "high",
         },
@@ -186,12 +197,14 @@ export function isKimiCodeManagedProvider(
   ];
   // Rust serde camelCase may also emit `_cc_source` depending on field rename
   const snake = (settingsConfig as Record<string, unknown>)["_cc_source"];
-  return source === KIMICODE_SOURCE_MANAGED || snake === KIMICODE_SOURCE_MANAGED;
+  return (
+    source === KIMICODE_SOURCE_MANAGED || snake === KIMICODE_SOURCE_MANAGED
+  );
 }
 
 export const KIMICODE_DEFAULT_CONFIG: KimiCodeProviderSettingsConfig = {
-  type: "kimi",
-  baseUrl: "https://api.kimi.com/coding/v1",
+  type: "anthropic",
+  baseUrl: "https://api.kimi.com/coding/",
   apiKey: "",
   defaultModelId: "k3",
   models: [

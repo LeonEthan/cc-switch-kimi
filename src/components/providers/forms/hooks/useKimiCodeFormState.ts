@@ -56,8 +56,8 @@ export function useKimiCodeFormState({
   });
 
   const [providerType, setProviderType] = useState<KimiCodeProviderType>(() => {
-    if (appId !== "kimicode") return "kimi";
-    return parseField(initialData, "type", "kimi");
+    if (appId !== "kimicode") return "anthropic";
+    return parseField(initialData, "type", "anthropic");
   });
 
   const [baseUrl, setBaseUrl] = useState(() => {
@@ -164,9 +164,7 @@ export function useKimiCodeFormState({
       setBaseUrl(next.baseUrl ?? "");
       setApiKey(next.apiKey ?? "");
       setModels(next.models ?? []);
-      setDefaultModelId(
-        next.defaultModelId ?? next.models?.[0]?.id ?? "",
-      );
+      setDefaultModelId(next.defaultModelId ?? next.models?.[0]?.id ?? "");
       onSettingsConfigChange(JSON.stringify(next, null, 2));
     },
     [onSettingsConfigChange],
