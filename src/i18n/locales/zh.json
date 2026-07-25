@@ -1505,7 +1505,8 @@
       "codex": "Codex",
       "gemini": "Gemini",
       "opencode": "OpenCode",
-      "grokbuild": "Grok Build"
+      "grokbuild": "Grok Build",
+      "kimicode": "Kimi Code"
     },
     "rawInputLabel": "原始",
     "dataSources": "数据来源",
@@ -1516,7 +1517,8 @@
       "codex_session": "Codex 会话日志",
       "gemini_session": "Gemini 会话日志",
       "opencode_session": "OpenCode 会话日志",
-      "grok_session": "Grok Build 会话日志"
+      "grok_session": "Grok Build 会话日志",
+      "kimicode_session": "Kimi Code 会话日志"
     },
     "sessionSync": {
       "trigger": "同步会话日志",

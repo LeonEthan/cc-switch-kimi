@@ -1505,7 +1505,8 @@
       "codex": "Codex",
       "gemini": "Gemini",
       "opencode": "OpenCode",
-      "grokbuild": "Grok Build"
+      "grokbuild": "Grok Build",
+      "kimicode": "Kimi Code"
     },
     "rawInputLabel": "Raw",
     "dataSources": "Data Sources",
@@ -1516,7 +1517,8 @@
       "codex_session": "Codex Session",
       "gemini_session": "Gemini Session",
       "opencode_session": "OpenCode Session",
-      "grok_session": "Grok Build Session"
+      "grok_session": "Grok Build Session",
+      "kimicode_session": "Kimi Code Session"
     },
     "sessionSync": {
       "trigger": "Sync session logs",

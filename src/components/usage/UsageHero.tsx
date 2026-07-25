@@ -69,6 +69,10 @@ const TITLE_THEMES: Record<AppType | "all", TitleTheme> = {
     accent: "text-purple-600 dark:text-purple-400",
     iconBg: "bg-purple-500/10",
   },
+  kimicode: {
+    accent: "text-sky-700 dark:text-sky-300",
+    iconBg: "bg-sky-500/10",
+  },
 };
 
 /**

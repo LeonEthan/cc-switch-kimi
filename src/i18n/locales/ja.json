@@ -1505,7 +1505,8 @@
       "codex": "Codex",
       "gemini": "Gemini",
       "opencode": "OpenCode",
-      "grokbuild": "Grok Build"
+      "grokbuild": "Grok Build",
+      "kimicode": "Kimi Code"
     },
     "rawInputLabel": "原始",
     "dataSources": "データソース",
@@ -1516,7 +1517,8 @@
       "codex_session": "Codex セッション",
       "gemini_session": "Gemini セッション",
       "opencode_session": "OpenCode セッション",
-      "grok_session": "Grok Build セッション"
+      "grok_session": "Grok Build セッション",
+      "kimicode_session": "Kimi Code セッション"
     },
     "sessionSync": {
       "trigger": "セッションログを同期",
