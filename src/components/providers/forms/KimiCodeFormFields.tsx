@@ -1,5 +1,7 @@
+import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { Download, Loader2, Plus, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -16,6 +18,12 @@ import type {
 } from "@/config/kimiCodeProviderPresets";
 import { kimiCodeProviderTypeOptions } from "@/config/kimiCodeProviderPresets";
 import { ApiKeySection } from "./shared/ApiKeySection";
+import { ModelDropdown } from "./shared/ModelDropdown";
+import {
+  fetchModelsForConfig,
+  showFetchModelsError,
+  type FetchedModel,
+} from "@/lib/api/model-fetch";
 import { normalizeAdditiveProviderKey } from "./helpers/additiveProviderKey";
 
 interface KimiCodeFormFieldsProps {
@@ -61,6 +69,36 @@ export function KimiCodeFormFields({
 }: KimiCodeFormFieldsProps) {
   const { t } = useTranslation();
   const disabled = !!readOnly;
+
+  const [fetchedModels, setFetchedModels] = useState<FetchedModel[]>([]);
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
+
+  const handleFetchModels = useCallback(() => {
+    if (!baseUrl || !apiKey) {
+      showFetchModelsError(null, t, {
+        hasApiKey: !!apiKey,
+        hasBaseUrl: !!baseUrl,
+      });
+      return;
+    }
+    setIsFetchingModels(true);
+    fetchModelsForConfig(baseUrl.trim(), apiKey.trim())
+      .then((list) => {
+        setFetchedModels(list);
+        if (list.length === 0) {
+          toast.info(t("providerForm.fetchModelsEmpty"));
+        } else {
+          toast.success(
+            t("providerForm.fetchModelsSuccess", { count: list.length }),
+          );
+        }
+      })
+      .catch((err) => {
+        console.warn("[ModelFetch] Failed:", err);
+        showFetchModelsError(err, t);
+      })
+      .finally(() => setIsFetchingModels(false));
+  }, [baseUrl, apiKey, t]);
 
   const updateModel = (index: number, patch: Partial<KimiCodeModel>) => {
     const next = models.map((m, i) => (i === index ? { ...m, ...patch } : m));
@@ -156,16 +194,32 @@ export function KimiCodeFormFields({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label>{t("kimicode.form.models", "Models")}</Label>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={addModel}
-            disabled={disabled}
-          >
-            <Plus className="h-3.5 w-3.5 mr-1" />
-            {t("common.add", "Add")}
-          </Button>
+          <div className="flex gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleFetchModels}
+              disabled={disabled || isFetchingModels}
+            >
+              {isFetchingModels ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5 mr-1" />
+              )}
+              {t("providerForm.fetchModels", "Fetch Models")}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addModel}
+              disabled={disabled}
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              {t("common.add", "Add")}
+            </Button>
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -179,12 +233,29 @@ export function KimiCodeFormFields({
                   <Label className="text-xs">
                     {t("kimicode.form.modelId", "Alias / ID")}
                   </Label>
-                  <Input
-                    value={model.id}
-                    onChange={(e) => updateModel(index, { id: e.target.value })}
-                    placeholder="k3"
-                    disabled={disabled}
-                  />
+                  <div className="flex items-center gap-1">
+                    <Input
+                      className="flex-1"
+                      value={model.id}
+                      onChange={(e) =>
+                        updateModel(index, { id: e.target.value })
+                      }
+                      placeholder="k3"
+                      disabled={disabled}
+                    />
+                    {!disabled && fetchedModels.length > 0 && (
+                      <ModelDropdown
+                        models={fetchedModels}
+                        onSelect={(modelId) =>
+                          updateModel(index, {
+                            id: modelId,
+                            model: modelId,
+                            displayName: models[index].displayName || modelId,
+                          })
+                        }
+                      />
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">
