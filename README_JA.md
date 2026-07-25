@@ -1,22 +1,21 @@
 <div align="center">
 
-# CC Switch
+# CC Switch · Kimi Code フォーク
 
-### Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw、Hermes Agent のオールインワン管理ツール
+### 公式 CC Switch に **Kimi Code CLI** 一等管理を追加したコミュニティフォーク
 
-[![Version](https://img.shields.io/github/v/release/farion1231/cc-switch?color=blue&label=version)](https://github.com/farion1231/cc-switch/releases)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/farion1231/cc-switch/releases)
+[![GitHub](https://img.shields.io/badge/repo-LeonEthan%2Fcc--switch--kimi-blue)](https://github.com/LeonEthan/cc-switch-kimi)
+[![Upstream](https://img.shields.io/badge/upstream-farion1231%2Fcc--switch-lightgrey)](https://github.com/farion1231/cc-switch)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app/)
-[![Downloads](https://img.shields.io/github/downloads/farion1231/cc-switch/total)](https://github.com/farion1231/cc-switch/releases/latest)
 
-<a href="https://trendshift.io/repositories/15372" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15372" alt="farion1231%2Fcc-switch | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-<a href="https://www.star-history.com/#farion1231/cc-switch&Date"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=farion1231/cc-switch&theme=dark" /><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=farion1231/cc-switch" width="196" height="55" /></picture></a>
-
-### 🌐 唯一の公式サイト：**[ccswitch.io](https://ccswitch.io)**
-
-[English](README.md) | [中文](README_ZH.md) | 日本語 | [Deutsch](README_DE.md) | [Changelog](CHANGELOG.md)
+[English](README.md) | [中文](README_ZH.md) | 日本語 | [Deutsch](README_DE.md) | [Changelog](CHANGELOG.md) | **[Fork ガイド](docs/FORK.md)**
 
 </div>
+
+> [!IMPORTANT]
+> **本リポジトリは公式 CC Switch ではありません。** 公式: [ccswitch.io](https://ccswitch.io) / [farion1231/cc-switch](https://github.com/farion1231/cc-switch)。  
+> 本フォークは **Kimi Code** 統合を追加します。Homebrew / アプリ内自動更新は**上流**ビルド（Kimi Code なし）になるため、フォーク機能を使う場合は本リポジトリからビルドし、自動更新をオフにしてください。詳細: **[docs/FORK.md](docs/FORK.md)**。
+
 
 ## ❤️スポンサー
 

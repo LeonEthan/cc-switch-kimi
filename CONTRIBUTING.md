@@ -1,18 +1,27 @@
-# Contributing to CC Switch
+# Contributing to CC Switch (Kimi Code fork)
 
 > [中文版本](#贡献指南)
 
-Thank you for your interest in contributing to CC Switch! Please read our [Code of Conduct](./CODE_OF_CONDUCT.md) before participating.
+This repository is a **community fork** of [farion1231/cc-switch](https://github.com/farion1231/cc-switch) with **Kimi Code** integration. See **[docs/FORK.md](docs/FORK.md)** before contributing.
+
+Thank you for your interest! Please also read the [Code of Conduct](./CODE_OF_CONDUCT.md).
+
+## Where to open issues / PRs
+
+| Topic | Prefer |
+|-------|--------|
+| Kimi Code integration, fork install/docs, fork-only bugs | **This repo**: [LeonEthan/cc-switch-kimi](https://github.com/LeonEthan/cc-switch-kimi/issues) |
+| General CC Switch features, upstream bugs | **Upstream**: [farion1231/cc-switch](https://github.com/farion1231/cc-switch/issues) (link or cherry-pick when relevant) |
 
 ## How to Contribute
 
 There are many ways to contribute:
 
-- **Report bugs** — Found something broken? [Open a bug report](https://github.com/farion1231/cc-switch/issues/new?template=bug_report.yml).
-- **Suggest features** — Have an idea? [Submit a feature request](https://github.com/farion1231/cc-switch/issues/new?template=feature_request.yml).
-- **Improve docs** — Spot a typo or missing info? [Report a doc issue](https://github.com/farion1231/cc-switch/issues/new?template=doc_issue.yml).
-- **Contribute code** — Fix bugs or implement features via pull requests.
-- **Translate** — Help us improve translations for English, Chinese, and Japanese.
+- **Report bugs** — Fork-specific: open an issue on this repository. Upstream regressions: prefer [upstream issues](https://github.com/farion1231/cc-switch/issues).
+- **Suggest features** — Kimi Code / fork UX here; general product ideas may belong upstream.
+- **Improve docs** — Especially [docs/FORK.md](docs/FORK.md) and README fork notices.
+- **Contribute code** — Prefer additive, merge-friendly changes. Open a PR against this fork’s default branch.
+- **Translate** — Help improve zh / zh-TW / en / ja for new Kimi Code strings.
 
 > **Security vulnerabilities**: Please do NOT use public issues. See our [Security Policy](./SECURITY.md) instead.
 
@@ -128,19 +137,24 @@ CC Switch supports three languages. When modifying user-facing text:
 
 # 贡献指南
 
-> [English Version](#contributing-to-cc-switch)
+> [English Version](#contributing-to-cc-switch-kimi-code-fork)
 
-感谢你对 CC Switch 的贡献兴趣！参与之前请阅读我们的[行为准则](./CODE_OF_CONDUCT.md)。
+本仓库是 [farion1231/cc-switch](https://github.com/farion1231/cc-switch) 的**社区分支**，增加了 **Kimi Code** 集成。贡献前请阅读 **[docs/FORK.md](docs/FORK.md)** 与[行为准则](./CODE_OF_CONDUCT.md)。
+
+## Issue / PR 去哪开
+
+| 主题 | 优先 |
+|------|------|
+| Kimi Code 集成、本分支安装/文档、仅本分支的问题 | **本仓库** [LeonEthan/cc-switch-kimi](https://github.com/LeonEthan/cc-switch-kimi/issues) |
+| 通用 CC Switch 功能与上游缺陷 | **上游** [farion1231/cc-switch](https://github.com/farion1231/cc-switch/issues) |
 
 ## 如何贡献
 
-你可以通过多种方式参与贡献：
-
-- **报告 Bug** — 发现问题？[提交 Bug 报告](https://github.com/farion1231/cc-switch/issues/new?template=bug_report.yml)。
-- **建议功能** — 有想法？[提交功能请求](https://github.com/farion1231/cc-switch/issues/new?template=feature_request.yml)。
-- **改进文档** — 发现错误或缺失？[报告文档问题](https://github.com/farion1231/cc-switch/issues/new?template=doc_issue.yml)。
-- **贡献代码** — 通过 Pull Request 修复 Bug 或实现新功能。
-- **翻译** — 帮助改进英文、中文和日文的翻译。
+- **报告 Bug** — 分支相关请在本仓库开 Issue；上游回归优先上游。
+- **建议功能** — Kimi Code / 分支体验在此；通用产品建议可走上游。
+- **改进文档** — 重点 [docs/FORK.md](docs/FORK.md) 与 README 分支说明。
+- **贡献代码** — 尽量 additive、易与上游合并；向本仓库默认分支提 PR。
+- **翻译** — 完善 zh / zh-TW / en / ja 中 Kimi Code 相关文案。
 
 > **安全漏洞**：请不要使用公开 Issue 报告。请参阅我们的[安全策略](./SECURITY.md)。
 

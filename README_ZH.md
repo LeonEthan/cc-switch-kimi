@@ -1,22 +1,26 @@
 <div align="center">
 
-# CC Switch
+# CC Switch · Kimi Code 分支
 
-### Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw 和 Hermes Agent 的全方位管理工具
+### 在官方 CC Switch 之上增加一等公民 **Kimi Code CLI** 支持的社区分支  
+*（Claude Code · Claude Desktop · Codex · Gemini CLI · Grok Build · OpenCode · OpenClaw · Hermes · **Kimi Code**）*
 
-[![Version](https://img.shields.io/github/v/release/farion1231/cc-switch?color=blue&label=version)](https://github.com/farion1231/cc-switch/releases)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/farion1231/cc-switch/releases)
+[![GitHub](https://img.shields.io/badge/repo-LeonEthan%2Fcc--switch--kimi-blue)](https://github.com/LeonEthan/cc-switch-kimi)
+[![Upstream](https://img.shields.io/badge/upstream-farion1231%2Fcc--switch-lightgrey)](https://github.com/farion1231/cc-switch)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app/)
-[![Downloads](https://img.shields.io/github/downloads/farion1231/cc-switch/total)](https://github.com/farion1231/cc-switch/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/LeonEthan/cc-switch-kimi)
 
-<a href="https://trendshift.io/repositories/15372" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15372" alt="farion1231%2Fcc-switch | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-<a href="https://www.star-history.com/#farion1231/cc-switch&Date"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=farion1231/cc-switch&theme=dark" /><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=farion1231/cc-switch" width="196" height="55" /></picture></a>
-
-### 🌐 唯一官方网站：**[ccswitch.io](https://ccswitch.io)**
-
-[English](README.md) | 中文 | [日本語](README_JA.md) | [Deutsch](README_DE.md) | [更新日志](CHANGELOG.md)
+[English](README.md) | 中文 | [日本語](README_JA.md) | [Deutsch](README_DE.md) | [更新日志](CHANGELOG.md) | **[分支说明](docs/FORK.md)**
 
 </div>
+
+> [!IMPORTANT]
+> **这是社区分支，不是官方 CC Switch 产品。**  
+> - 官方应用 / 官网 / 已公证安装包：**[ccswitch.io](https://ccswitch.io)** · [farion1231/cc-switch](https://github.com/farion1231/cc-switch)  
+> - **本仓库**在官方能力之上，将 **Kimi Code** 作为可管理应用（供应商、MCP、Skills、会话、用量导入、About 中的 CLI 安装/更新）。  
+> - 若要保留上述能力，**请勿**用官方 Homebrew（`brew install --cask cc-switch`）或**应用内自动更新**安装/覆盖——那些渠道发布的是**上游**包，**不含** Kimi Code 集成。  
+> - 与官方共用数据目录 `~/.cc-switch/`。使用本分支自构建包时，请**关闭应用内自动更新**。  
+> 完整说明见 **[docs/FORK.md](docs/FORK.md)**。
 
 ## ❤️赞助商
 
@@ -194,19 +198,22 @@ TeamoRouter 还提供企业级功能，包括集中账单、团队管理、BYOK�
 
 </details>
 
-## 为什么选择 CC Switch？
+## 为什么选这个分支？
 
-现代 AI 编程依赖于 Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw 和 Hermes 等工具——但每个工具都有自己的配置格式。切换 API 供应商意味着手动编辑 JSON、TOML 或 `.env` 文件，而在多个工具之间缺乏一个统一管理 MCP, SKILLS 的方式。
+本分支保留 **上游 CC Switch** 的完整能力，并增加 **Kimi Code CLI** 作为一等管理应用（累加配置写入 `~/.kimi-code`，不做本地 Proxy 接管）。**不需要** Kimi Code 时请用[官方版](https://ccswitch.io)；**需要** 时请用本仓库。
 
-**CC Switch** 为你提供一个桌面应用来管理所有支持的 AI 工具。无需手动编辑配置文件，你将获得一个可视化界面，一键将供应商导入应用，一键在不同的供应商之间进行切换，内置 50+ 供应商预设、统一的 MCP, SKILLS 管理以及系统托盘即时切换功能——所有操作都基于可靠的 SQLite 数据库和原子写入机制，保护你的配置不被损坏。
+上游价值不变：用一个桌面应用管理 Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw、Hermes，避免手改 JSON/TOML/`.env`，统一 MCP / Skills、托盘切换，SQLite 原子写入。
 
-- **一个应用，八个工具** — 在单一界面中管理 Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw 和 Hermes
+- **一个应用，九个工具（本分支）** — 上游八个，加上 **Kimi Code**
+- **Kimi Code** — 供应商、MCP/Skills、会话管理、从 `wire.jsonl` 导入 Usage、About 中 CLI 安装/更新（`kimi`）
 - **告别手动编辑** — 50+ 供应商预设，包括 AWS Bedrock、NVIDIA NIM 和社区中转服务；一键即可切换
-- **统一 MCP, SKILLS 管理** — 一个面板管理 Claude、Codex、Gemini、Grok Build、OpenCode 和 Hermes 的 MCP, SKILLS, 支持双向同步
+- **统一 MCP / Skills 管理** — Claude、Codex、Gemini、Grok Build、OpenCode、Hermes 与 **Kimi Code** 双向同步
 - **系统托盘快速切换** — 从托盘菜单即时切换供应商，无需打开完整应用
 - **云同步** — 通过 Dropbox、OneDrive、iCloud 或 WebDAV 服务器在不同设备之间同步供应商数据
 - **跨平台** — 基于 Tauri 2 构建的原生桌面应用，支持 Windows、macOS 和 Linux
-- **小工具** - 内置了多种小工具来解决首次安装登录确认、禁止签名、插件拓展同步等多种功能
+- **小工具** — 首次安装登录确认、禁止签名、插件拓展同步等
+
+安装注意、自动更新与回滚见 **[docs/FORK.md](docs/FORK.md)**。
 
 ## 界面预览
 
@@ -220,28 +227,31 @@ TeamoRouter 还提供企业级功能，包括集中账单、团队管理、BYOK�
 
 ### 供应商管理
 
-- **8 个支持工具，50+ 预设** — Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw、Hermes；复制 key 即可一键导入
+- **9 个支持工具（本分支），50+ 预设** — Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw、Hermes、**Kimi Code**；复制 key 即可一键导入
 - **通用供应商** — 一份配置同步到 Claude Code、Codex 和 Gemini CLI
+- **Kimi Code** — 累加模式写入 `~/.kimi-code/config.toml`（与 Hermes / OpenCode 同类）
 - 一键切换、系统托盘快速访问、拖拽排序、导入导出
 
 ### 代理与故障转移
 
 - **本地代理热切换** — 格式转换、自动故障转移、熔断器、供应商健康监控和整流器
 - **应用级代理接管** — 独立为 Claude、Codex、Gemini 或 Grok Build 配置代理，具体到单个供应商
+- **Kimi Code / Hermes / OpenCode** — 本分支不做本地 Proxy 接管（仅管理 live 配置）
 
 ### MCP、Prompts 与 Skills
 
-- **统一 MCP 面板** — 管理 Claude、Codex、Gemini、Grok Build、OpenCode 和 Hermes 的 MCP 服务器，双向同步，支持 Deep Link 导入
+- **统一 MCP 面板** — 管理 Claude、Codex、Gemini、Grok Build、OpenCode、Hermes 与 **Kimi Code** 的 MCP，双向同步，支持 Deep Link 导入
 - **Prompts** — Markdown 编辑器，跨应用同步（CLAUDE.md / AGENTS.md / GEMINI.md），回填保护
 - **Skills** — 从 GitHub 仓库或 ZIP 文件一键安装，自定义仓库管理，支持软连接和文件复制
 
 ### 用量与成本追踪
 
 - **用量仪表盘** — 跨供应商追踪支出、请求数和 Token 用量，趋势图表、详细请求日志和自定义模型定价
+- **Kimi Code 会话** — 同步时从 `~/.kimi-code` 会话日志导入 turn 级用量（数据源 `kimicode_session`）
 
 ### 会话管理器与工作区
 
-- 浏览、搜索和恢复支持的会话来源
+- 浏览、搜索和恢复支持的会话来源（含 **Kimi Code** 的 `wire.jsonl`）
 - **工作区编辑器**（OpenClaw）— 编辑 Agent 文件（AGENTS.md、SOUL.md 等），支持 Markdown 预览
 
 ### 系统与平台
@@ -253,9 +263,16 @@ TeamoRouter 还提供企业级功能，包括集中账单、团队管理、BYOK�
 ## 常见问题
 
 <details>
-<summary><strong>CC Switch 支持哪些 AI 工具？</strong></summary>
+<summary><strong>本分支支持哪些 AI 工具？</strong></summary>
 
-CC Switch 支持八个工具：**Claude Code**、**Claude Desktop**、**Codex**、**Gemini CLI**、**Grok Build**、**OpenCode**、**OpenClaw** 和 **Hermes**。每个工具都有专属的供应商预设和配置管理。
+**本分支**支持九个工具：**Claude Code**、**Claude Desktop**、**Codex**、**Gemini CLI**、**Grok Build**、**OpenCode**、**OpenClaw**、**Hermes** 和 **Kimi Code**。每个工具都有专属的供应商预设和配置管理。官方上游当前为八个（不含 Kimi Code）。详见 [docs/FORK.md](docs/FORK.md)。
+
+</details>
+
+<details>
+<summary><strong>这是官方 CC Switch 吗？</strong></summary>
+
+**不是。** 官方产品：[ccswitch.io](https://ccswitch.io) / [farion1231/cc-switch](https://github.com/farion1231/cc-switch)。本仓库（`LeonEthan/cc-switch-kimi`）是面向 **Kimi Code** 集成的社区分支。默认仍使用 `~/.cc-switch/` 数据目录；运行自构建包时请关闭自动更新。
 
 </details>
 
@@ -274,9 +291,10 @@ CC Switch 使用“通用配置片段”功能，在不同的供应商之间传�
 </details>
 
 <details>
-<summary><strong>macOS 安装</strong></summary>
+<summary><strong>macOS 安装（官方 vs 本分支）</strong></summary>
 
-CC Switch macOS 版本已通过 Apple 代码签名和公证，可直接下载安装，无需额外操作。推荐使用 `.dmg` 安装包。
+- **官方**包经 Apple 公证 — 请从 [ccswitch.io](https://ccswitch.io)、官方 Releases 或 Homebrew 安装。
+- **本分支**通常从源码构建（`pnpm tauri build`）。本地包多为 ad-hoc 签名，首次打开可能需要右键 → 打开。需要 Kimi Code 时请勿使用 `brew install --cask cc-switch`。
 
 </details>
 
@@ -322,7 +340,8 @@ CC_SWITCH_GDK_BACKEND=wayland ./CC-Switch-*.AppImage
 
 ## 文档
 
-如需了解各项功能的详细使用方法，请查阅 **[用户手册](docs/user-manual/zh/README.md)** — 涵盖供应商管理、MCP/Prompts/Skills、代理与故障转移等全部功能。
+- **本分支说明（Kimi Code、安装、自动更新）**：**[docs/FORK.md](docs/FORK.md)**
+- **用户手册**（上游功能详解）：**[docs/user-manual/zh/README.md](docs/user-manual/zh/README.md)** — 供应商、MCP/Prompts/Skills、代理与故障转移等
 
 ## 快速开始
 
@@ -337,14 +356,18 @@ CC_SWITCH_GDK_BACKEND=wayland ./CC-Switch-*.AppImage
 
 ### MCP、Prompts、Skills 与会话
 
-- **MCP**：点击"MCP"按钮 → 通过模板或自定义配置添加服务器 → 切换各应用同步开关
+- **MCP**：点击"MCP"按钮 → 通过模板或自定义配置添加服务器 → 切换各应用同步开关（含 Kimi Code）
 - **Prompts**：点击"Prompts" → 使用 Markdown 编辑器创建预设 → 激活后同步到 live 文件
 - **Skills**：点击"Skills" → 浏览 GitHub 仓库 → 一键安装到支持的应用
-- **会话**：点击"Sessions" → 浏览、搜索和恢复支持的会话来源
+- **会话**：点击"Sessions" → 浏览、搜索和恢复支持的会话来源（含 Kimi Code）
+- **用量**：Usage 页点击同步，可导入 Kimi Code 会话 token 用量
 
-> **注意**：首次启动可以手动导入现有 CLI 工具配置作为默认供应商。
+> **注意**：首次启动可以手动导入现有 CLI 工具配置作为默认供应商。使用本分支自构建包时请关闭应用内自动更新（见 [docs/FORK.md](docs/FORK.md)）。
 
 ## 下载安装
+
+> [!WARNING]
+> **Homebrew cask、官网、应用内自动更新** 安装的是**上游** CC Switch（**不含** Kimi Code 集成）。使用本分支请从**本仓库源码构建**（或安装本仓库 Releases 产物，若有）。
 
 ### 系统要求
 
@@ -352,47 +375,30 @@ CC_SWITCH_GDK_BACKEND=wayland ./CC-Switch-*.AppImage
 - **macOS**：macOS 12 (Monterey) 及以上
 - **Linux**：Ubuntu 22.04+ / Debian 11+ / Fedora 34+ 等主流发行版
 
-### Windows 用户
-
-从 [Releases](../../releases) 页面下载最新版本的 `CC-Switch-v{版本号}-Windows.msi` 安装包或 `CC-Switch-v{版本号}-Windows-Portable.zip` 绿色版。
-
-### macOS 用户
-
-**方式一：通过 Homebrew 安装（推荐）**
+### 构建本分支（推荐）
 
 ```bash
-brew install --cask cc-switch
+git clone https://github.com/LeonEthan/cc-switch-kimi.git
+cd cc-switch-kimi
+pnpm install
+pnpm tauri build
 ```
 
-更新：
+- macOS 应用：`src-tauri/target/release/bundle/macos/CC Switch.app`
+- 依赖：Node 18+、pnpm、Rust — 见 [CONTRIBUTING.md](CONTRIBUTING.md)
+- 备份 / 替换安装 / 回滚：**[docs/FORK.md](docs/FORK.md)**
 
-```bash
-brew upgrade --cask cc-switch
-```
+### 官方 CC Switch（无 Kimi Code 集成）
 
-**方式二：手动下载**
+若只需上游功能，请用官方渠道（已公证、可自动更新）：
 
-从 [Releases](../../releases) 页面下载 `CC-Switch-v{版本号}-macOS.dmg`（推荐）或 `.zip`。
+- 官网：[ccswitch.io](https://ccswitch.io)
+- Releases：[farion1231/cc-switch](https://github.com/farion1231/cc-switch/releases)
+- Homebrew：`brew install --cask cc-switch`（仅官方包）
 
-> **注意**：CC Switch macOS 版本已通过 Apple 代码签名和公证，可直接安装打开。
+### Flatpak
 
-### Arch Linux 用户
-
-**通过 paru 安装（推荐）**
-
-```bash
-paru -S cc-switch-bin
-```
-
-### Linux 用户
-
-从 [Releases](../../releases) 页面下载最新版本的 Linux 安装包：
-
-- `CC-Switch-v{版本号}-Linux.deb`（Debian/Ubuntu）
-- `CC-Switch-v{版本号}-Linux.rpm`（Fedora/RHEL/openSUSE）
-- `CC-Switch-v{版本号}-Linux.AppImage`（通用）
-
-> **Flatpak**：官方 Release 不包含 Flatpak 包。如需使用，可从 `.deb` 自行构建 — 参见 [`flatpak/README.md`](flatpak/README.md)。
+可从 `.deb` 构建 Flatpak — 参见 [`flatpak/README.md`](flatpak/README.md)。
 
 <details>
 <summary><strong>架构总览</strong></summary>

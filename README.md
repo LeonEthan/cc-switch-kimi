@@ -1,22 +1,26 @@
 <div align="center">
 
-# CC Switch
+# CC Switch · Kimi Code fork
 
-### The All-in-One Manager for Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw & Hermes Agent
+### Community fork of CC Switch with first-class **Kimi Code CLI** support  
+*(Claude Code · Claude Desktop · Codex · Gemini CLI · Grok Build · OpenCode · OpenClaw · Hermes · **Kimi Code**)*
 
-[![Version](https://img.shields.io/github/v/release/farion1231/cc-switch?color=blue&label=version)](https://github.com/farion1231/cc-switch/releases)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/farion1231/cc-switch/releases)
+[![GitHub](https://img.shields.io/badge/repo-LeonEthan%2Fcc--switch--kimi-blue)](https://github.com/LeonEthan/cc-switch-kimi)
+[![Upstream](https://img.shields.io/badge/upstream-farion1231%2Fcc--switch-lightgrey)](https://github.com/farion1231/cc-switch)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app/)
-[![Downloads](https://img.shields.io/github/downloads/farion1231/cc-switch/total)](https://github.com/farion1231/cc-switch/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/LeonEthan/cc-switch-kimi)
 
-<a href="https://trendshift.io/repositories/15372" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15372" alt="farion1231%2Fcc-switch | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-<a href="https://www.star-history.com/#farion1231/cc-switch&Date"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=farion1231/cc-switch&theme=dark" /><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=farion1231/cc-switch" width="196" height="55" /></picture></a>
-
-### 🌐 The Only Official Website: **[ccswitch.io](https://ccswitch.io)**
-
-English | [中文](README_ZH.md) | [日本語](README_JA.md) | [Deutsch](README_DE.md) | [Changelog](CHANGELOG.md)
+English | [中文](README_ZH.md) | [日本語](README_JA.md) | [Deutsch](README_DE.md) | [Changelog](CHANGELOG.md) | **[Fork guide](docs/FORK.md)**
 
 </div>
+
+> [!IMPORTANT]
+> **This is a community fork, not the official CC Switch product.**  
+> - Official app / website / notarized releases: **[ccswitch.io](https://ccswitch.io)** · [farion1231/cc-switch](https://github.com/farion1231/cc-switch)  
+> - **This repo** adds **Kimi Code** as a managed app (providers, MCP, Skills, sessions, usage import, CLI install/update in About).  
+> - **Do not** install via official Homebrew (`brew install --cask cc-switch`) or the official auto-updater if you want to keep these fork features — they ship **upstream** builds without Kimi Code.  
+> - Same data path as official: `~/.cc-switch/`. **Disable in-app auto-update** when running a self-built fork package.  
+> Full details: **[docs/FORK.md](docs/FORK.md)**.
 
 ## ❤️Sponsor
 
@@ -193,19 +197,22 @@ TeamoRouter also offers enterprise features including centralized billing, team 
 
 </details>
 
-## Why CC Switch?
+## Why this fork?
 
-Modern AI-powered coding relies on tools like Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw, and Hermes — but each has its own configuration format. Switching API providers means manually editing JSON, TOML, or `.env` files, and there is no unified way to manage MCP and Skills across multiple tools.
+This fork keeps everything useful about **upstream CC Switch** and adds **Kimi Code CLI** as a first-class managed app (additive config under `~/.kimi-code`, no local proxy takeover). Use **official** CC Switch if you do not need that; use **this repo** if you do.
 
-**CC Switch** gives you a single desktop app to manage all supported AI tools. Instead of editing config files by hand, you get a visual interface to import providers with one click, switch between them instantly, with 50+ built-in provider presets, unified MCP and Skills management, and system tray quick switching — all backed by a reliable SQLite database with atomic writes that protect your configs from corruption.
+Upstream value proposition (unchanged): one desktop app instead of hand-editing JSON/TOML/`.env` for Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw, Hermes — plus MCP, Skills, tray switching, SQLite with atomic writes.
 
-- **One App, Eight Tools** — Manage Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw, and Hermes from a single interface
+- **One App, Nine Tools (this fork)** — Upstream eight, plus **Kimi Code**
+- **Kimi Code** — Providers, MCP/Skills, Session Manager, Usage import from `wire.jsonl`, About CLI install/update (`kimi`)
 - **No More Manual Editing** — 50+ provider presets including AWS Bedrock, NVIDIA NIM, and community relays; just pick and switch
-- **Unified MCP & Skills Management** — One panel to manage MCP servers and Skills across Claude, Codex, Gemini, Grok Build, OpenCode, and Hermes with bidirectional sync
+- **Unified MCP & Skills Management** — Claude, Codex, Gemini, Grok Build, OpenCode, Hermes, and **Kimi Code** with bidirectional sync
 - **System Tray Quick Switch** — Switch providers instantly from the tray menu, no need to open the full app
 - **Cloud Sync** — Sync provider data across devices via Dropbox, OneDrive, iCloud, or WebDAV servers
 - **Cross-Platform** — Native desktop app for Windows, macOS, and Linux, built with Tauri 2
-- **Built-in Utilities** — Includes various utilities for first-launch login confirmation, signature bypass, plugin extension sync, and more
+- **Built-in Utilities** — First-launch login confirmation, signature bypass, plugin extension sync, and more
+
+See **[docs/FORK.md](docs/FORK.md)** for install warnings, auto-update, and rollback.
 
 ## Screenshots
 
@@ -219,28 +226,31 @@ Modern AI-powered coding relies on tools like Claude Code, Claude Desktop, Codex
 
 ### Provider Management
 
-- **8 supported tools, 50+ presets** — Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw, Hermes; copy your key and import with one click
+- **9 supported tools (this fork), 50+ presets** — Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw, Hermes, **Kimi Code**; copy your key and import with one click
 - **Universal providers** — One config syncs to Claude Code, Codex, and Gemini CLI
+- **Kimi Code** — Additive live providers in `~/.kimi-code/config.toml` (same class as Hermes/OpenCode)
 - One-click switching, system tray quick access, drag-and-drop sorting, import/export
 
 ### Proxy & Failover
 
 - **Local proxy with hot-switching** — Format conversion, auto-failover, circuit breaker, provider health monitoring, and request rectifier
 - **App-level takeover** — Independently proxy Claude, Codex, Gemini, or Grok Build, down to individual providers
+- **Kimi Code / Hermes / OpenCode** — No local proxy takeover in this fork (manage live config only)
 
 ### MCP, Prompts & Skills
 
-- **Unified MCP panel** — Manage MCP servers across Claude, Codex, Gemini, Grok Build, OpenCode, and Hermes with bidirectional sync and Deep Link import
+- **Unified MCP panel** — Manage MCP servers across Claude, Codex, Gemini, Grok Build, OpenCode, Hermes, and **Kimi Code** with bidirectional sync and Deep Link import
 - **Prompts** — Markdown editor with cross-app sync (CLAUDE.md / AGENTS.md / GEMINI.md) and backfill protection
 - **Skills** — One-click install from GitHub repos or ZIP files, custom repository management, with symlink and file copy support
 
 ### Usage & Cost Tracking
 
 - **Usage dashboard** — Track spending, requests, and tokens with trend charts, detailed request logs, and custom per-model pricing
+- **Kimi Code sessions** — Sync imports turn-level usage from `~/.kimi-code` session logs (`kimicode_session` data source)
 
 ### Session Manager & Workspace
 
-- Browse, search, and restore conversation history across supported session sources
+- Browse, search, and restore conversation history across supported session sources (including **Kimi Code** `wire.jsonl`)
 - **Workspace editor** (OpenClaw) — Edit agent files (AGENTS.md, SOUL.md, etc.) with Markdown preview
 
 ### System & Platform
@@ -252,9 +262,16 @@ Modern AI-powered coding relies on tools like Claude Code, Claude Desktop, Codex
 ## FAQ
 
 <details>
-<summary><strong>Which AI tools does CC Switch support?</strong></summary>
+<summary><strong>Which AI tools does this fork support?</strong></summary>
 
-CC Switch supports eight tools: **Claude Code**, **Claude Desktop**, **Codex**, **Gemini CLI**, **Grok Build**, **OpenCode**, **OpenClaw**, and **Hermes**. Each tool has dedicated provider presets and configuration management.
+**This fork** supports nine tools: **Claude Code**, **Claude Desktop**, **Codex**, **Gemini CLI**, **Grok Build**, **OpenCode**, **OpenClaw**, **Hermes**, and **Kimi Code**. Each tool has dedicated provider presets and configuration management. Official upstream currently ships eight (without Kimi Code). Details: [docs/FORK.md](docs/FORK.md).
+
+</details>
+
+<details>
+<summary><strong>Is this the official CC Switch?</strong></summary>
+
+**No.** Official product: [ccswitch.io](https://ccswitch.io) / [farion1231/cc-switch](https://github.com/farion1231/cc-switch). This repository (`LeonEthan/cc-switch-kimi`) is a community fork focused on **Kimi Code** integration. Same default data directory (`~/.cc-switch`); disable auto-update when running a fork build.
 
 </details>
 
@@ -273,9 +290,10 @@ CC Switch provides a "Shared Config Snippet" feature to pass common data (beyond
 </details>
 
 <details>
-<summary><strong>macOS installation</strong></summary>
+<summary><strong>macOS installation (official vs this fork)</strong></summary>
 
-CC Switch for macOS is code-signed and notarized by Apple. You can download and install it directly — no extra steps needed. We recommend using the `.dmg` installer.
+- **Official** builds are Apple-notarized — install from [ccswitch.io](https://ccswitch.io) or official Releases / Homebrew.
+- **This fork** is usually built from source (`pnpm tauri build`). Local packages are ad-hoc signed; first open may require right-click → Open. Do not use `brew install --cask cc-switch` if you need Kimi Code.
 
 </details>
 
@@ -319,7 +337,8 @@ If you launch from a desktop icon, add it to the `.desktop` `Exec=` line (e.g. `
 
 ## Documentation
 
-For detailed guides on every feature, check out the **[User Manual](docs/user-manual/en/README.md)** — covering provider management, MCP/Prompts/Skills, proxy & failover, and more.
+- **This fork (Kimi Code, install, auto-update)**: **[docs/FORK.md](docs/FORK.md)**
+- **User Manual** (upstream feature guides): **[docs/user-manual/en/README.md](docs/user-manual/en/README.md)** — providers, MCP/Prompts/Skills, proxy & failover, and more
 
 ## Quick Start
 
@@ -334,14 +353,18 @@ For detailed guides on every feature, check out the **[User Manual](docs/user-ma
 
 ### MCP, Prompts, Skills & Sessions
 
-- **MCP**: Click the "MCP" button → Add servers via templates or custom config → Toggle per-app sync
+- **MCP**: Click the "MCP" button → Add servers via templates or custom config → Toggle per-app sync (including Kimi Code)
 - **Prompts**: Click "Prompts" → Create presets with Markdown editor → Activate to sync to live files
 - **Skills**: Click "Skills" → Browse GitHub repos → One-click install to supported apps
-- **Sessions**: Click "Sessions" → Browse, search, and restore conversation history across supported session sources
+- **Sessions**: Click "Sessions" → Browse, search, and restore conversation history (including Kimi Code)
+- **Usage**: Sync on the Usage page to import Kimi Code session token usage
 
-> **Note**: On first launch, you can manually import existing CLI tool configs as the default provider.
+> **Note**: On first launch, you can manually import existing CLI tool configs as the default provider. When running a self-built fork package, disable in-app auto-update ([docs/FORK.md](docs/FORK.md)).
 
 ## Download & Installation
+
+> [!WARNING]
+> The **Homebrew cask**, **official website**, and **in-app auto-updater** install **upstream** CC Switch (no Kimi Code). For this fork, **build from this repository** (or use artifacts published on **this** repo’s Releases if present).
 
 ### System Requirements
 
@@ -349,47 +372,30 @@ For detailed guides on every feature, check out the **[User Manual](docs/user-ma
 - **macOS**: macOS 12 (Monterey) and above
 - **Linux**: Ubuntu 22.04+ / Debian 11+ / Fedora 34+ and other mainstream distributions
 
-### Windows Users
-
-Download the latest `CC-Switch-v{version}-Windows.msi` installer or `CC-Switch-v{version}-Windows-Portable.zip` portable version from the [Releases](../../releases) page.
-
-### macOS Users
-
-**Method 1: Install via Homebrew (Recommended)**
+### Build this fork (recommended)
 
 ```bash
-brew install --cask cc-switch
+git clone https://github.com/LeonEthan/cc-switch-kimi.git
+cd cc-switch-kimi
+pnpm install
+pnpm tauri build
 ```
 
-Update:
+- macOS app: `src-tauri/target/release/bundle/macos/CC Switch.app`
+- Prerequisites: Node 18+, pnpm, Rust — see [CONTRIBUTING.md](CONTRIBUTING.md)
+- Full fork install / backup / rollback: **[docs/FORK.md](docs/FORK.md)**
 
-```bash
-brew upgrade --cask cc-switch
-```
+### Official CC Switch (no Kimi Code integration)
 
-**Method 2: Manual Download**
+If you only need upstream features, use the official channels (notarized builds, auto-update):
 
-Download `CC-Switch-v{version}-macOS.dmg` (recommended) or `.zip` from the [Releases](../../releases) page.
+- Website: [ccswitch.io](https://ccswitch.io)
+- Releases: [farion1231/cc-switch](https://github.com/farion1231/cc-switch/releases)
+- Homebrew: `brew install --cask cc-switch` (official package only)
 
-> **Note**: CC Switch for macOS is code-signed and notarized by Apple. You can install and open it directly.
+### Flatpak
 
-### Arch Linux Users
-
-**Install via paru (Recommended)**
-
-```bash
-paru -S cc-switch-bin
-```
-
-### Linux Users
-
-Download the latest Linux build from the [Releases](../../releases) page:
-
-- `CC-Switch-v{version}-Linux.deb` (Debian/Ubuntu)
-- `CC-Switch-v{version}-Linux.rpm` (Fedora/RHEL/openSUSE)
-- `CC-Switch-v{version}-Linux.AppImage` (Universal)
-
-> **Flatpak**: Not included in official releases. You can build it yourself from the `.deb` — see [`flatpak/README.md`](flatpak/README.md) for instructions.
+You can build Flatpak from a `.deb` — see [`flatpak/README.md`](flatpak/README.md).
 
 <details>
 <summary><strong>Architecture Overview</strong></summary>
