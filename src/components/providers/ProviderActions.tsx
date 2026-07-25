@@ -85,11 +85,12 @@ export function ProviderActions({
   const iconButtonClass = "h-8 w-8 p-1";
 
   // 累加模式应用（OpenCode 非 OMO / OpenClaw / Hermes）
+  // KimiCode 不算：它的 config.toml 只有一个 default_model 属主，主按钮沿用
+  // Claude Code 的 In use / Enable 语义（switch = upsert_and_select 原子写入）。
   const isAdditiveMode =
     (appId === "opencode" && !isOmo) ||
     appId === "openclaw" ||
-    appId === "hermes" ||
-    appId === "kimicode";
+    appId === "hermes";
 
   // 故障转移模式下的按钮逻辑（累加模式和 OMO 应用不支持故障转移）
   const isFailoverMode =
