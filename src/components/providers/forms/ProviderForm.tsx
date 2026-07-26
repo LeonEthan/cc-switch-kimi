@@ -55,10 +55,16 @@ import {
   kimiCodeProviderPresets,
   type KimiCodeProviderPreset,
 } from "@/config/kimiCodeProviderPresets";
+import {
+  isPiManagedProvider,
+  piProviderPresets,
+  type PiProviderPreset,
+} from "@/config/piProviderPresets";
 import { OpenCodeFormFields } from "./OpenCodeFormFields";
 import { OpenClawFormFields } from "./OpenClawFormFields";
 import { HermesFormFields } from "./HermesFormFields";
 import { KimiCodeFormFields } from "./KimiCodeFormFields";
+import { PiFormFields } from "./PiFormFields";
 import type { UniversalProviderPreset } from "@/config/universalProviderPresets";
 import {
   applyTemplateValues,
@@ -112,6 +118,7 @@ import {
   useOpenclawFormState,
   useHermesFormState,
   useKimiCodeFormState,
+  usePiFormState,
   useCopilotAuth,
   useCodexOauth,
   useXaiOauth,
@@ -131,6 +138,7 @@ import { resolveManagedAccountId } from "@/lib/authBinding";
 import { useOpenClawLiveProviderIds } from "@/hooks/useOpenClaw";
 import { useHermesLiveProviderIds } from "@/hooks/useHermes";
 import { useKimiCodeLiveProviderIds } from "@/hooks/useKimiCode";
+import { usePiLiveProviderIds } from "@/hooks/usePi";
 import { validateAdditiveProviderKey } from "./helpers/additiveProviderKey";
 
 type PresetEntry = {
@@ -142,7 +150,8 @@ type PresetEntry = {
     | OpenCodeProviderPreset
     | OpenClawProviderPreset
     | HermesProviderPreset
-    | KimiCodeProviderPreset;
+    | KimiCodeProviderPreset
+    | PiProviderPreset;
 };
 
 export const normalizeCodexCatalogModelsForSave = (
@@ -723,6 +732,11 @@ function ProviderFormFull({
         id: `kimicode-${index}`,
         preset,
       }));
+    } else if (appId === "pi") {
+      return piProviderPresets.map<PresetEntry>((preset, index) => ({
+        id: `pi-${index}`,
+        preset,
+      }));
     }
     return providerPresets
       .filter((p) => !p.hidden)
@@ -953,6 +967,18 @@ function ProviderFormFull({
     isLoading: isKimiCodeLiveProviderIdsLoading,
   } = useKimiCodeLiveProviderIds(appId === "kimicode");
 
+  const piForm = usePiFormState({
+    initialData,
+    appId,
+    providerId,
+    onSettingsConfigChange: (config) => form.setValue("settingsConfig", config),
+    getSettingsConfig: () => form.getValues("settingsConfig"),
+  });
+  const {
+    data: piLiveProviderIds = [],
+    isLoading: isPiLiveProviderIdsLoading,
+  } = usePiLiveProviderIds(appId === "pi");
+
   const additiveExistingProviderKeys = useMemo(() => {
     if (appId === "opencode" && !isAnyOmoCategory) {
       return Array.from(
@@ -995,6 +1021,16 @@ function ProviderFormFull({
       );
     }
 
+    if (appId === "pi") {
+      return Array.from(
+        new Set(
+          [...piForm.existingKeys, ...piLiveProviderIds].filter(
+            (key) => key !== providerId,
+          ),
+        ),
+      );
+    }
+
     return [];
   }, [
     appId,
@@ -1004,6 +1040,8 @@ function ProviderFormFull({
     isAnyOmoCategory,
     kimiCodeForm.existingKeys,
     kimiCodeLiveProviderIds,
+    piForm.existingKeys,
+    piLiveProviderIds,
     openclawForm.existingOpenclawKeys,
     openclawLiveProviderIds,
     opencodeLiveProviderIds,
@@ -1024,6 +1062,9 @@ function ProviderFormFull({
     if (appId === "kimicode") {
       return isKimiCodeLiveProviderIdsLoading;
     }
+    if (appId === "pi") {
+      return isPiLiveProviderIdsLoading;
+    }
     return false;
   }, [
     appId,
@@ -1031,6 +1072,7 @@ function ProviderFormFull({
     isEditMode,
     isHermesLiveProviderIdsLoading,
     isKimiCodeLiveProviderIdsLoading,
+    isPiLiveProviderIdsLoading,
     isOpenclawLiveProviderIdsLoading,
     isOpencodeLiveProviderIdsLoading,
   ]);
@@ -1049,6 +1091,9 @@ function ProviderFormFull({
     if (appId === "kimicode") {
       return kimiCodeLiveProviderIds.includes(providerId);
     }
+    if (appId === "pi") {
+      return piLiveProviderIds.includes(providerId);
+    }
     return false;
   }, [
     appId,
@@ -1056,6 +1101,7 @@ function ProviderFormFull({
     isAnyOmoCategory,
     isEditMode,
     kimiCodeLiveProviderIds,
+    piLiveProviderIds,
     openclawLiveProviderIds,
     opencodeLiveProviderIds,
     providerId,
@@ -1152,7 +1198,14 @@ function ProviderFormFull({
                   invalid: "kimicode.form.providerKeyInvalid",
                   duplicate: "kimicode.form.providerKeyDuplicate",
                 }
-              : null;
+              : appId === "pi"
+                ? {
+                    key: piForm.providerKey,
+                    required: "pi.form.providerKeyRequired",
+                    invalid: "pi.form.providerKeyInvalid",
+                    duplicate: "pi.form.providerKeyDuplicate",
+                  }
+                : null;
 
     if (additiveKey) {
       const result = validateAdditiveProviderKey({
@@ -1497,6 +1550,8 @@ function ProviderFormFull({
       payload.providerKey = hermesForm.hermesProviderKey;
     } else if (appId === "kimicode") {
       payload.providerKey = kimiCodeForm.providerKey;
+    } else if (appId === "pi") {
+      payload.providerKey = piForm.providerKey;
     }
 
     if (isAnyOmoCategory && !payload.presetCategory) {
@@ -1949,6 +2004,21 @@ function ProviderFormFull({
       const preset = entry.preset as KimiCodeProviderPreset;
       const config = preset.settingsConfig;
       kimiCodeForm.resetState(config);
+      form.reset({
+        name: preset.nameKey ? t(preset.nameKey) : preset.name,
+        websiteUrl: preset.websiteUrl ?? "",
+        settingsConfig: JSON.stringify(config, null, 2),
+        icon: preset.icon ?? "",
+        iconColor: preset.iconColor ?? "",
+      });
+      return;
+    }
+
+    // Pi preset handling
+    if (appId === "pi") {
+      const preset = entry.preset as PiProviderPreset;
+      const config = preset.settingsConfig;
+      piForm.resetState(config);
       form.reset({
         name: preset.nameKey ? t(preset.nameKey) : preset.name,
         websiteUrl: preset.websiteUrl ?? "",
@@ -2517,6 +2587,29 @@ function ProviderFormFull({
             />
           )}
 
+          {/* Pi 专属字段 */}
+          {appId === "pi" && (
+            <PiFormFields
+              providerKey={piForm.providerKey}
+              onProviderKeyChange={piForm.setProviderKey}
+              providerKeyDisabled={isEditMode && isProviderKeyLocked}
+              providerType={piForm.providerType}
+              onProviderTypeChange={piForm.handleTypeChange}
+              baseUrl={piForm.baseUrl}
+              onBaseUrlChange={piForm.handleBaseUrlChange}
+              apiKey={piForm.apiKey}
+              onApiKeyChange={piForm.handleApiKeyChange}
+              models={piForm.models}
+              onModelsChange={piForm.handleModelsChange}
+              defaultModelId={piForm.defaultModelId}
+              onDefaultModelIdChange={piForm.handleDefaultModelIdChange}
+              readOnly={
+                !!providerId &&
+                isPiManagedProvider(providerId, initialData?.settingsConfig)
+              }
+            />
+          )}
+
           {/* 配置编辑器：Codex、Claude、Gemini 分别使用不同的编辑器 */}
           {appId === "codex" ? (
             <>
@@ -2607,7 +2700,8 @@ function ProviderFormFull({
             </>
           ) : appId === "openclaw" ||
             appId === "hermes" ||
-            appId === "kimicode" ? (
+            appId === "kimicode" ||
+            appId === "pi" ? (
             <>
               <div className="space-y-2">
                 <Label htmlFor="settingsConfig">
@@ -2631,7 +2725,15 @@ function ProviderFormFull({
   "defaultModelId": "k3",
   "models": [{ "id": "k3", "model": "k3", "maxContextSize": 1048576 }]
 }`
-                        : `{
+                        : appId === "pi"
+                          ? `{
+  "type": "anthropic-messages",
+  "baseUrl": "https://api.anthropic.com",
+  "apiKey": "",
+  "defaultModelId": "claude-fable-5",
+  "models": [{ "id": "claude-fable-5", "contextWindow": 1000000, "maxTokens": 128000 }]
+}`
+                          : `{
   "baseUrl": "https://api.example.com/v1",
   "apiKey": "your-api-key-here",
   "api": "openai-completions",

@@ -157,6 +157,10 @@ impl McpService {
                     &server.server,
                 )?;
             }
+            AppType::Pi => {
+                // Pi has no native MCP support (extensions only), skip
+                log::debug!("Pi has no native MCP support, skipping sync");
+            }
         }
         Ok(())
     }
@@ -195,6 +199,10 @@ impl McpService {
             }
             AppType::KimiCode => {
                 mcp::remove_server_from_kimicode(id)?;
+            }
+            AppType::Pi => {
+                // Pi has no native MCP support (extensions only), skip
+                log::debug!("Pi has no native MCP support, skipping remove");
             }
         }
         Ok(())

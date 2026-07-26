@@ -201,6 +201,7 @@ function App() {
     openclaw: true,
     hermes: true,
     kimicode: true,
+    pi: false,
   };
 
   const getFirstVisibleApp = (): AppId => {
@@ -213,6 +214,7 @@ function App() {
     if (visibleApps.openclaw) return "openclaw";
     if (visibleApps.hermes) return "hermes";
     if (visibleApps.kimicode) return "kimicode";
+    if (visibleApps.pi) return "pi";
     return "claude"; // fallback
   };
 
@@ -232,7 +234,9 @@ function App() {
       sharedFeatureApp !== "opencode" &&
       sharedFeatureApp !== "openclaw" &&
       sharedFeatureApp !== "gemini" &&
-      sharedFeatureApp !== "hermes"
+      sharedFeatureApp !== "hermes" &&
+      sharedFeatureApp !== "kimicode" &&
+      sharedFeatureApp !== "pi"
     ) {
       setCurrentView("providers");
     }
@@ -302,7 +306,9 @@ function App() {
     sharedFeatureApp === "opencode" ||
     sharedFeatureApp === "openclaw" ||
     sharedFeatureApp === "gemini" ||
-    sharedFeatureApp === "hermes";
+    sharedFeatureApp === "hermes" ||
+    sharedFeatureApp === "kimicode" ||
+    sharedFeatureApp === "pi";
 
   const {
     addProvider,

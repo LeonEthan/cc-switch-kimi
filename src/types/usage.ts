@@ -173,7 +173,9 @@ export interface UsageRangeSelection {
  * every dashboard query (see `folded_app_type_sql`).
  * `opencode` / `openclaw` / `hermes` / `kimicode` have no proxy handler at
  * all — they appear only as managed apps elsewhere. Kimi Code usage arrives
- * via session-log import (`kimicode_session` data source).
+ * via session-log import (`kimicode_session` data source). Pi usage arrives
+ * both via its namespaced proxy routes (`/pi/*`) and via session-log import
+ * (`pi_session` data source).
  */
 export type AppType =
   | "claude"
@@ -181,7 +183,8 @@ export type AppType =
   | "gemini"
   | "grokbuild"
   | "opencode"
-  | "kimicode";
+  | "kimicode"
+  | "pi";
 
 export type AppTypeFilter = "all" | AppType;
 
@@ -192,6 +195,7 @@ export const KNOWN_APP_TYPES: ReadonlyArray<AppType> = [
   "grokbuild",
   "opencode",
   "kimicode",
+  "pi",
 ];
 
 /**

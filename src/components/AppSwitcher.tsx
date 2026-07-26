@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { AppId } from "@/lib/api";
 import type { VisibleApps } from "@/types";
 import { ProviderIcon } from "@/components/ProviderIcon";
@@ -28,6 +29,7 @@ const ALL_APPS: AppId[] = [
   "openclaw",
   "hermes",
   "kimicode",
+  "pi",
 ];
 const STORAGE_KEY = "cc-switch-last-app";
 
@@ -37,6 +39,7 @@ export function AppSwitcher({
   visibleApps,
   compact,
 }: AppSwitcherProps) {
+  const { t } = useTranslation();
   const handleSwitch = (app: AppId) => {
     if (app === activeApp) return;
     localStorage.setItem(STORAGE_KEY, app);
@@ -53,18 +56,13 @@ export function AppSwitcher({
     openclaw: "openclaw",
     hermes: "hermes",
     kimicode: "kimi",
+    pi: "pi",
   };
-  const appDisplayName: Record<AppId, string> = {
-    claude: "Claude Code",
-    "claude-desktop": "Claude Desktop",
-    codex: "Codex",
-    gemini: "Gemini",
-    grokbuild: "Grok Build",
-    opencode: "OpenCode",
-    openclaw: "OpenClaw",
-    hermes: "Hermes",
-    kimicode: "Kimi Code",
-  };
+  // Display name lookup via i18n — keeps `apps.*` locale files as the single
+  // source of truth. Falls back to the id itself (e.g. "kimicode") when the
+  // active locale hasn't translated a particular app yet.
+  const appDisplayName = (app: AppId): string =>
+    t(`apps.${app}`, { defaultValue: app });
 
   // Filter apps based on visibility settings (default all visible)
   const appsToShow = ALL_APPS.filter((app) => {
@@ -93,7 +91,7 @@ export function AppSwitcher({
             <span className="relative inline-flex shrink-0">
               <ProviderIcon
                 icon={appIconName[app]}
-                name={appDisplayName[app]}
+                name={appDisplayName(app)}
                 size={iconSize}
               />
               {BadgeIcon && (
@@ -126,7 +124,7 @@ export function AppSwitcher({
                   : "max-w-[120px] opacity-100 ml-2",
               )}
             >
-              {appDisplayName[app]}
+              {appDisplayName(app)}
             </span>
           </button>
         );

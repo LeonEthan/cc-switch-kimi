@@ -156,7 +156,7 @@ pub struct TrayAppSection {
 pub const AUTO_SUFFIX: &str = "auto";
 pub const TRAY_ID: &str = "cc-switch";
 
-pub const TRAY_SECTIONS: [TrayAppSection; 4] = [
+pub const TRAY_SECTIONS: [TrayAppSection; 5] = [
     TrayAppSection {
         app_type: AppType::Claude,
         prefix: "claude_",
@@ -184,6 +184,13 @@ pub const TRAY_SECTIONS: [TrayAppSection; 4] = [
         empty_id: "grokbuild_empty",
         header_label: "Grok Build",
         log_name: "Grok Build",
+    },
+    TrayAppSection {
+        app_type: AppType::Pi,
+        prefix: "pi_",
+        empty_id: "pi_empty",
+        header_label: "Pi",
+        log_name: "Pi",
     },
 ];
 
@@ -1203,6 +1210,18 @@ mod tests {
         assert_eq!(section.prefix, "grokbuild_");
         assert_eq!(section.empty_id, "grokbuild_empty");
         assert_eq!(section.header_label, "Grok Build");
+    }
+
+    #[test]
+    fn tray_sections_include_pi_provider_switching() {
+        let section = TRAY_SECTIONS
+            .iter()
+            .find(|section| section.app_type == AppType::Pi)
+            .expect("Pi tray section should exist");
+
+        assert_eq!(section.prefix, "pi_");
+        assert_eq!(section.empty_id, "pi_empty");
+        assert_eq!(section.header_label, "Pi");
     }
 
     fn make_quota(tool: &str, success: bool, tiers: Vec<QuotaTier>) -> SubscriptionQuota {

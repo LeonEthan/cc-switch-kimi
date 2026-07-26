@@ -22,11 +22,10 @@ use crate::store::AppState;
 
 // Re-export sub-module functions for external access
 pub use live::{
-    import_default_config, import_hermes_providers_from_live,
-    import_kimicode_providers_from_live, import_openclaw_providers_from_live,
-    import_opencode_providers_from_live, read_live_settings,
-    should_import_default_config_on_startup, sync_current_to_live,
-    update_toml_common_config_snippet,
+    import_default_config, import_hermes_providers_from_live, import_kimicode_providers_from_live,
+    import_openclaw_providers_from_live, import_opencode_providers_from_live,
+    import_pi_providers_from_live, read_live_settings, should_import_default_config_on_startup,
+    sync_current_to_live, update_toml_common_config_snippet,
 };
 
 // Internal re-exports (pub(crate))
@@ -2277,6 +2276,54 @@ impl ProviderService {
             if !live_config_managed {
                 return Ok(true);
             }
+
+            // Pi under proxy takeover: the live file is proxy-owned. A plain
+            // live write would clobber the takeover fields (proxy baseUrl /
+            // placeholder marker), so route edits through the takeover-aware
+            // backup + sync machinery instead.
+            if matches!(app_type, AppType::Pi) {
+                let has_live_backup =
+                    futures::executor::block_on(state.db.get_live_backup(app_type.as_str()))
+                        .ok()
+                        .flatten()
+                        .is_some();
+                let live_taken_over = state
+                    .proxy_service
+                    .detect_takeover_in_live_config_for_app(&app_type);
+                if has_live_backup || live_taken_over {
+                    // Only the proxy's current routing target gets its live
+                    // entry re-taken-over and its backup entry patched (the
+                    // patch moves the backup selection, so it must not run for
+                    // non-selected providers; their edits stay DB-side and are
+                    // re-synced after takeover ends).
+                    let is_current =
+                        crate::settings::get_effective_current_provider(&state.db, &app_type)?
+                            .as_deref()
+                            == Some(provider.id.as_str());
+                    if is_current {
+                        futures::executor::block_on(
+                            state
+                                .proxy_service
+                                .update_live_backup_from_provider(app_type.as_str(), &provider),
+                        )
+                        .map_err(|e| AppError::Message(format!("更新 Live 备份失败: {e}")))?;
+                        if live_taken_over
+                            && futures::executor::block_on(state.proxy_service.is_running())
+                        {
+                            futures::executor::block_on(
+                                state
+                                    .proxy_service
+                                    .sync_pi_live_from_provider_while_proxy_active(&provider),
+                            )
+                            .map_err(|e| {
+                                AppError::Message(format!("同步 Pi Live 配置失败: {e}"))
+                            })?;
+                        }
+                    }
+                    return Ok(true);
+                }
+            }
+
             write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
             return Ok(true);
         }
@@ -2459,7 +2506,7 @@ impl ProviderService {
                     remove_additive_provider_from_live(&app_type, id)?;
                 }
             }
-            AppType::OpenClaw | AppType::Hermes | AppType::KimiCode => {
+            AppType::OpenClaw | AppType::Hermes | AppType::KimiCode | AppType::Pi => {
                 remove_additive_provider_from_live(&app_type, id)?;
             }
             _ => {
@@ -2519,7 +2566,7 @@ impl ProviderService {
         // normal live write.
         let _switch_guard = if matches!(
             app_type,
-            AppType::Claude | AppType::Codex | AppType::Gemini | AppType::GrokBuild
+            AppType::Claude | AppType::Codex | AppType::Gemini | AppType::GrokBuild | AppType::Pi
         ) {
             Some(futures::executor::block_on(
                 state.proxy_service.lock_switch_for_app(app_type.as_str()),
@@ -2672,6 +2719,11 @@ impl ProviderService {
                 &provider.id,
                 provider.settings_config.clone(),
             )?;
+        } else if matches!(app_type, AppType::Pi) {
+            // Pi is additive too: "switching" upserts the provider into
+            // models.json and updates defaultProvider/defaultModel in
+            // settings.json in the same locked mutation.
+            crate::pi_config::upsert_and_select(&provider.id, provider.settings_config.clone())?;
         } else {
             write_live_with_common_config(state.db.as_ref(), &app_type, provider)?;
 
@@ -2991,6 +3043,7 @@ impl ProviderService {
             AppType::OpenClaw => Self::extract_openclaw_common_config(&provider.settings_config),
             AppType::Hermes => Ok(String::new()), // Hermes doesn't use common config snippets
             AppType::KimiCode => Ok(String::new()), // KimiCode doesn't use common config snippets
+            AppType::Pi => Ok(String::new()),     // Pi doesn't use common config snippets
         }
     }
 
@@ -3009,6 +3062,7 @@ impl ProviderService {
             AppType::OpenClaw => Self::extract_openclaw_common_config(settings_config),
             AppType::Hermes => Ok(String::new()), // Hermes doesn't use common config snippets
             AppType::KimiCode => Ok(String::new()), // KimiCode doesn't use common config snippets
+            AppType::Pi => Ok(String::new()),     // Pi doesn't use common config snippets
         }
     }
 
@@ -3557,6 +3611,43 @@ impl ProviderService {
                     ));
                 }
             }
+            AppType::Pi => {
+                if !provider.settings_config.is_object() {
+                    return Err(AppError::localized(
+                        "provider.pi.settings.not_object",
+                        "Pi 配置必须是 JSON 对象",
+                        "Pi configuration must be a JSON object",
+                    ));
+                }
+                // Managed ids and OAuth-backed providers are Pi-owned: CC Switch
+                // must not write them (Pi owns/refreshes OAuth tokens).
+                if crate::pi_config::is_managed_provider_id(&provider.id) {
+                    return Err(AppError::localized(
+                        "provider.pi.managed.readonly",
+                        format!(
+                            "托管供应商 '{}' 由 Pi 管理，请在 Pi CLI 中配置",
+                            provider.id
+                        ),
+                        format!(
+                            "Managed provider '{}' is controlled by Pi; configure it in the Pi CLI",
+                            provider.id
+                        ),
+                    ));
+                }
+                if crate::pi_config::provider_has_oauth_credential(&provider.id) {
+                    return Err(AppError::localized(
+                        "provider.pi.oauth.readonly",
+                        format!(
+                            "供应商 '{}' 使用 Pi OAuth 登录，请在 Pi CLI 中使用 /login 管理",
+                            provider.id
+                        ),
+                        format!(
+                            "Provider '{}' uses Pi OAuth; manage it with /login in the Pi CLI",
+                            provider.id
+                        ),
+                    ));
+                }
+            }
         }
 
         // Validate and clean UsageScript configuration (common for all app types)
@@ -3761,8 +3852,8 @@ impl ProviderService {
 
                 Ok((api_key, base_url))
             }
-            AppType::OpenClaw | AppType::Hermes | AppType::KimiCode => {
-                // OpenClaw/Hermes use apiKey and baseUrl directly on the object
+            AppType::OpenClaw | AppType::Hermes | AppType::KimiCode | AppType::Pi => {
+                // OpenClaw/Hermes/Pi use apiKey and baseUrl directly on the object
                 let api_key = provider
                     .settings_config
                     .get("apiKey")

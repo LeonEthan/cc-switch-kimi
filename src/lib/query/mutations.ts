@@ -10,6 +10,7 @@ import { generateUUID } from "@/utils/uuid";
 import { openclawKeys } from "@/hooks/useOpenClaw";
 import { invalidateHermesProviderCaches } from "@/hooks/useHermes";
 import { kimiCodeKeys } from "@/hooks/useKimiCode";
+import { piKeys } from "@/hooks/usePi";
 import { usageKeys } from "@/lib/query/usage";
 import {
   CODEX_OFFICIAL_PROVIDER_ID,
@@ -328,6 +329,17 @@ export const useSwitchProviderMutation = (appId: AppId) => {
         });
         await queryClient.invalidateQueries({
           queryKey: kimiCodeKeys.defaultModel,
+        });
+      }
+      if (appId === "pi") {
+        await queryClient.invalidateQueries({
+          queryKey: piKeys.liveProviderIds,
+        });
+        await queryClient.invalidateQueries({
+          queryKey: piKeys.defaultProviderId,
+        });
+        await queryClient.invalidateQueries({
+          queryKey: piKeys.defaultModel,
         });
       }
 

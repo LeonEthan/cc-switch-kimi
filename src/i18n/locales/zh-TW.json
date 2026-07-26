@@ -146,6 +146,10 @@
     "officialPartner": "官方合作夥伴",
     "managedByHermes": "Hermes 託管",
     "managedByHermesHint": "該專案定義於 Hermes 的 providers: dict，請在 Hermes Web UI 中編輯或刪除。",
+    "managedByKimiCode": "Kimi 託管",
+    "managedByKimiCodeHint": "由 Kimi Code OAuth 管理，請在 CLI 中使用 /login 修改",
+    "managedByPi": "Pi 託管",
+    "managedByPiHint": "由 Pi 管理（OAuth 由 Pi 持有），請在 Pi 中使用 /login 修改",
     "openTerminal": "開啟終端機",
     "terminalOpened": "終端機已開啟",
     "terminalOpenFailed": "開啟終端機失敗",
@@ -846,7 +850,9 @@
     },
     "saveFailedGeneric": "儲存失敗，請重試",
     "kimiCodeConfigDir": "Kimi Code 設定目錄",
-    "browsePlaceholderKimiCode": "~/.kimi-code"
+    "piConfigDir": "Pi 設定目錄",
+    "browsePlaceholderKimiCode": "~/.kimi-code",
+    "browsePlaceholderPi": "~/.pi/agent"
   },
   "apps": {
     "claude": "Claude",
@@ -859,7 +865,8 @@
     "opencode": "OpenCode",
     "openclaw": "OpenClaw",
     "hermes": "Hermes",
-    "kimicode": "Kimi Code"
+    "kimicode": "Kimi Code",
+    "pi": "Pi"
   },
   "grokBuild": {
     "apiBackend": "API Backend",
@@ -1478,7 +1485,8 @@
       "gemini": "Gemini",
       "opencode": "OpenCode",
       "grokbuild": "Grok Build",
-      "kimicode": "Kimi Code"
+      "kimicode": "Kimi Code",
+      "pi": "Pi"
     },
     "rawInputLabel": "原始",
     "dataSources": "資料來源",
@@ -1490,7 +1498,8 @@
       "gemini_session": "Gemini 工作階段日誌",
       "opencode_session": "OpenCode 工作階段日誌",
       "grok_session": "Grok Build 工作階段日誌",
-      "kimicode_session": "Kimi Code 工作階段日誌"
+      "kimicode_session": "Kimi Code 工作階段日誌",
+      "pi_session": "Pi 工作階段日誌"
     },
     "sessionSync": {
       "trigger": "同步工作階段日誌",
@@ -3009,6 +3018,25 @@
       "defaultModel": "預設模型",
       "selectModel": "選擇模型",
       "defaultModelHint": "切換到此供應商時寫入 default_model"
+    }
+  },
+  "pi": {
+    "form": {
+      "providerKey": "供應商 Key",
+      "providerKeyHint": "對應 ~/.pi/agent/models.json 中的 providers.<key>",
+      "providerKeyRequired": "請填寫供應商標識",
+      "providerKeyInvalid": "標識格式無效，只能使用小寫字母、數字和連字號",
+      "providerKeyDuplicate": "此標識已被使用，請更換",
+      "type": "協議類型",
+      "baseUrl": "Base URL",
+      "models": "模型列表",
+      "modelId": "模型 ID",
+      "modelName": "顯示名稱",
+      "contextWindow": "上下文視窗",
+      "maxTokens": "最大輸出 Token",
+      "defaultModel": "預設模型",
+      "selectModel": "選擇模型",
+      "defaultModelHint": "啟用此供應商時寫入 settings.json 的 defaultModel"
     }
   }
 }

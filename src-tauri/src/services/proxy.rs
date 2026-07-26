@@ -484,6 +484,9 @@ impl ProxyService {
         } else if live_taken_over && matches!(app_type, AppType::GrokBuild) {
             self.sync_grok_live_from_provider_while_proxy_active(&previous_provider)
                 .await
+        } else if live_taken_over && matches!(app_type, AppType::Pi) {
+            self.sync_pi_live_from_provider_while_proxy_active(&previous_provider)
+                .await
         } else {
             Ok(())
         };
@@ -709,6 +712,12 @@ impl ProxyService {
             .await
             .map(|c| c.enabled)
             .unwrap_or(false);
+        let pi_enabled = self
+            .db
+            .get_proxy_config_for_app("pi")
+            .await
+            .map(|c| c.enabled)
+            .unwrap_or(false);
         // OpenCode and OpenClaw don't support proxy features, always return false
         let opencode_enabled = false;
         let openclaw_enabled = false;
@@ -720,6 +729,7 @@ impl ProxyService {
             grokbuild: grokbuild_enabled,
             opencode: opencode_enabled,
             openclaw: openclaw_enabled,
+            pi: pi_enabled,
         })
     }
 
@@ -963,6 +973,7 @@ impl ProxyService {
             AppType::Codex => self.read_codex_live()?,
             AppType::Gemini => self.read_gemini_live()?,
             AppType::GrokBuild => self.read_grok_live()?,
+            AppType::Pi => self.read_pi_live()?,
             _ => return Err("该应用不支持代理功能".to_string()),
         };
 
@@ -1226,6 +1237,78 @@ impl ProxyService {
                     }
                 }
             }
+            AppType::Pi => {
+                // Pi additive 模式下普通切换不写 is_current；以「DB current，
+                // 否则 live defaultProvider」定位要回填的供应商（与接管时
+                // resolve_pi_current_provider 的选择一致）。
+                let provider_id =
+                    crate::settings::get_effective_current_provider(&self.db, &AppType::Pi)
+                        .map_err(|e| format!("获取 Pi 当前供应商失败: {e}"))?
+                        .or_else(|| {
+                            live_config
+                                .get("settings")
+                                .and_then(|s| s.get("defaultProvider"))
+                                .and_then(|v| v.as_str())
+                                .map(ToString::to_string)
+                        });
+
+                if let Some(provider_id) = provider_id {
+                    if let Ok(Some(mut provider)) = self.db.get_provider_by_id(&provider_id, "pi") {
+                        // 凭据来源：models.json 内联 apiKey（仅具体值；跳过占位符
+                        // 与 $VAR/!command 模板），否则 auth.json 的 api_key 条目。
+                        // OAuth 凭据由 Pi 托管，绝不同步进 CC Switch 的数据库。
+                        let inline_key = live_config
+                            .get("modelsSource")
+                            .and_then(|v| v.as_str())
+                            .and_then(crate::pi_config::parse_models_source)
+                            .and_then(|models| {
+                                models
+                                    .get("providers")
+                                    .and_then(|p| p.get(&provider_id))
+                                    .and_then(|e| e.get("apiKey"))
+                                    .and_then(|v| v.as_str())
+                                    .map(ToString::to_string)
+                            });
+                        let auth_key = live_config
+                            .get("authApiKeys")
+                            .and_then(|k| k.get(&provider_id))
+                            .and_then(|v| v.as_str())
+                            .map(ToString::to_string);
+
+                        let token = inline_key.into_iter().chain(auth_key).find(|k| {
+                            let k = k.trim();
+                            !k.is_empty()
+                                && k != PROXY_TOKEN_PLACEHOLDER
+                                && !k.starts_with('$')
+                                && !k.starts_with('!')
+                        });
+
+                        if let Some(token) = token {
+                            if provider.settings_config.is_null() {
+                                provider.settings_config = json!({});
+                            }
+                            if let Some(root) = provider.settings_config.as_object_mut() {
+                                root.insert("apiKey".to_string(), json!(token.trim()));
+                                if let Err(e) = self.db.update_provider_settings_config(
+                                    "pi",
+                                    &provider_id,
+                                    &provider.settings_config,
+                                ) {
+                                    log::warn!("同步 Pi Token 到数据库失败: {e}");
+                                } else {
+                                    log::info!(
+                                        "已同步 Pi Token 到数据库 (provider: {provider_id})"
+                                    );
+                                }
+                            } else {
+                                log::warn!(
+                                    "Pi provider settings_config 格式异常（非对象），跳过写入 Token (provider: {provider_id})"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
             _ => {}
         }
 
@@ -1250,6 +1333,11 @@ impl ProxyService {
 
         if let Ok(live_config) = self.read_grok_live() {
             self.sync_live_config_to_provider(&AppType::GrokBuild, &live_config)
+                .await?;
+        }
+
+        if let Ok(live_config) = self.read_pi_live() {
+            self.sync_live_config_to_provider(&AppType::Pi, &live_config)
                 .await?;
         }
 
@@ -1305,7 +1393,7 @@ impl ProxyService {
             .map_err(|e| format!("清除接管状态失败: {e}"))?;
 
         // 4. 清除所有应用的 enabled 状态（用户手动关闭，不需要下次自动恢复）
-        for app_type in ["claude", "codex", "gemini", "grokbuild"] {
+        for app_type in ["claude", "codex", "gemini", "grokbuild", "pi"] {
             if let Ok(mut config) = self.db.get_proxy_config_for_app(app_type).await {
                 if config.enabled {
                     config.enabled = false;
@@ -1430,6 +1518,20 @@ impl ProxyService {
             }
         }
 
+        // Pi
+        if let Ok(config) = self.read_pi_live() {
+            if Self::live_has_proxy_placeholder_for_app(&AppType::Pi, &config) {
+                log::warn!("pi Live 已被代理接管，不备份；下次 stop 会从 SSOT 重建 Live");
+            } else {
+                let json_str = serde_json::to_string(&config)
+                    .map_err(|e| format!("序列化 Pi 配置失败: {e}"))?;
+                self.db
+                    .save_live_backup("pi", &json_str)
+                    .await
+                    .map_err(|e| format!("备份 Pi 配置失败: {e}"))?;
+            }
+        }
+
         log::info!("已备份所有应用的 Live 配置");
         Ok(())
     }
@@ -1441,6 +1543,7 @@ impl ProxyService {
             AppType::Codex => ("codex", self.read_codex_live()?),
             AppType::Gemini => ("gemini", self.read_gemini_live()?),
             AppType::GrokBuild => ("grokbuild", self.read_grok_live()?),
+            AppType::Pi => ("pi", self.read_pi_live()?),
             _ => return Err("该应用不支持代理功能".to_string()),
         };
 
@@ -1544,6 +1647,7 @@ impl ProxyService {
     async fn takeover_live_configs(&self) -> Result<(), String> {
         let (proxy_url, proxy_codex_base_url) = self.build_proxy_urls().await?;
         let proxy_grok_base_url = format!("{}/grokbuild/v1", proxy_url.trim_end_matches('/'));
+        let proxy_pi_base_url = format!("{}/pi", proxy_url.trim_end_matches('/'));
 
         // Claude: 修改 ANTHROPIC_BASE_URL，使用占位符替代真实 Token（代理会注入真实 Token）
         if let Ok(mut live_config) = self.read_claude_live() {
@@ -1595,6 +1699,21 @@ impl ProxyService {
                 log::info!("Grok Build Live 配置已接管，代理地址: {proxy_grok_base_url}");
             } else {
                 log::info!("Grok Build Live 处于官方登录态（无自定义模型表），跳过代理接管");
+            }
+        }
+
+        // Pi: 仅当能解析出带可注入凭据的当前供应商时才接管（OAuth 登录由
+        // Pi 托管，代理无法注入）；不满足则跳过，不阻断其它应用的接管。
+        if let Ok(provider) = self.resolve_pi_current_provider() {
+            if Self::pi_provider_has_injectable_key(&provider)
+                && (crate::proxy::providers::pi_provider_supports_anthropic_messages(&provider)
+                    || crate::proxy::providers::pi_provider_supports_chat_completions(&provider))
+            {
+                self.sync_pi_live_from_provider_while_proxy_active(&provider)
+                    .await?;
+                log::info!("Pi Live 配置已接管，代理地址: {proxy_pi_base_url}");
+            } else {
+                log::info!("Pi 当前供应商无可注入凭据或协议不可路由，跳过代理接管");
             }
         }
 
@@ -1661,6 +1780,29 @@ impl ProxyService {
                 Self::apply_grok_takeover_fields(&mut live_config, &proxy_grok_base_url)?;
                 self.write_grok_live(&live_config)?;
                 log::info!("Grok Build Live 配置已接管，代理地址: {proxy_grok_base_url}");
+            }
+            AppType::Pi => {
+                let provider = self.resolve_pi_current_provider()?;
+                if !Self::pi_provider_has_injectable_key(&provider) {
+                    return Err(
+                        "Pi 当前供应商没有可注入的 API Key（OAuth 登录由 Pi 托管，代理无法注入凭据）。请先在供应商配置中填写 API Key \
+                         (The current Pi provider has no API key the proxy can inject; OAuth logins are owned by Pi. Set an API key on the provider first)"
+                            .to_string(),
+                    );
+                }
+                if !crate::proxy::providers::pi_provider_supports_anthropic_messages(&provider)
+                    && !crate::proxy::providers::pi_provider_supports_chat_completions(&provider)
+                {
+                    return Err(
+                        "Pi 当前供应商的协议暂不支持本地路由（仅支持 anthropic-messages / openai-completions） \
+                         (The current Pi provider's protocol is not routable by the local proxy; only anthropic-messages / openai-completions are supported)"
+                            .to_string(),
+                    );
+                }
+                self.sync_pi_live_from_provider_while_proxy_active(&provider)
+                    .await?;
+                let proxy_pi_base_url = format!("{}/pi", proxy_url.trim_end_matches('/'));
+                log::info!("Pi Live 配置已接管，代理地址: {proxy_pi_base_url}");
             }
             _ => return Err("该应用不支持代理功能".to_string()),
         }
@@ -1739,6 +1881,23 @@ impl ProxyService {
                     }
                 }
             }
+            AppType::Pi => {
+                if let Ok(provider) = self.resolve_pi_current_provider() {
+                    if Self::pi_provider_has_injectable_key(&provider)
+                        && (crate::proxy::providers::pi_provider_supports_anthropic_messages(
+                            &provider,
+                        ) || crate::proxy::providers::pi_provider_supports_chat_completions(
+                            &provider,
+                        ))
+                    {
+                        let _ = self
+                            .sync_pi_live_from_provider_while_proxy_active(&provider)
+                            .await;
+                    } else {
+                        log::info!("Pi 当前供应商无可注入凭据或协议不可路由，跳过代理接管");
+                    }
+                }
+            }
             _ => {}
         }
 
@@ -1779,6 +1938,14 @@ impl ProxyService {
                     log::info!("Grok Build Live 配置已恢复");
                 }
             }
+            AppType::Pi => {
+                if let Ok(Some(backup)) = self.db.get_live_backup("pi").await {
+                    let config: Value = serde_json::from_str(&backup.original_config)
+                        .map_err(|e| format!("解析 Pi 备份失败: {e}"))?;
+                    self.write_pi_live(&config)?;
+                    log::info!("Pi Live 配置已恢复");
+                }
+            }
             _ => {}
         }
 
@@ -1794,6 +1961,7 @@ impl ProxyService {
             AppType::Codex,
             AppType::Gemini,
             AppType::GrokBuild,
+            AppType::Pi,
         ] {
             if let Err(e) = self
                 .restore_live_config_for_app_with_fallback(&app_type)
@@ -1884,6 +2052,7 @@ impl ProxyService {
             AppType::Codex => self.write_codex_live(config),
             AppType::Gemini => self.write_gemini_live(config),
             AppType::GrokBuild => self.write_grok_live(config),
+            AppType::Pi => self.write_pi_live(config),
             _ => Err("该应用不支持代理功能".to_string()),
         }
     }
@@ -1904,6 +2073,10 @@ impl ProxyService {
             },
             AppType::GrokBuild => match self.read_grok_live() {
                 Ok(config) => Self::is_grok_live_taken_over(&config),
+                Err(_) => false,
+            },
+            AppType::Pi => match self.read_pi_live() {
+                Ok(config) => Self::is_pi_live_taken_over(&config),
                 Err(_) => false,
             },
             _ => false,
@@ -1957,6 +2130,7 @@ impl ProxyService {
             AppType::Codex => self.cleanup_codex_takeover_placeholders_in_live(),
             AppType::Gemini => self.cleanup_gemini_takeover_placeholders_in_live(),
             AppType::GrokBuild => self.cleanup_grok_takeover_placeholders_in_live(),
+            AppType::Pi => self.cleanup_pi_takeover_placeholders_in_live(),
             _ => Ok(()),
         }
     }
@@ -2061,6 +2235,21 @@ impl ProxyService {
                             })
                         });
                 Ok(Self::is_grok_live_taken_over(&config) && base_url_matches)
+            }
+            AppType::Pi => {
+                let proxy_pi_base_url = format!("{}/pi", proxy_url.trim_end_matches('/'));
+                let selected = crate::pi_config::selected_provider_entry()
+                    .map_err(|e| format!("读取 Pi 默认供应商条目失败: {e}"))?;
+                let Some((_id, entry)) = selected else {
+                    return Ok(false);
+                };
+                let base_url_matches = entry
+                    .get("baseUrl")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|url| Self::proxy_urls_match(url, &proxy_pi_base_url));
+                let placeholder_matches =
+                    entry.get("apiKey").and_then(|v| v.as_str()) == Some(PROXY_TOKEN_PLACEHOLDER);
+                Ok(base_url_matches && placeholder_matches)
             }
             _ => Ok(false),
         }
@@ -2169,10 +2358,16 @@ impl ProxyService {
             .map_err(|e| format!("写入 Grok Build 配置失败: {e}"))
     }
 
+    fn cleanup_pi_takeover_placeholders_in_live(&self) -> Result<(), String> {
+        crate::pi_config::remove_takeover_markers_all(PROXY_TOKEN_PLACEHOLDER)
+            .map(|_| ())
+            .map_err(|e| format!("清理 Pi 接管占位符失败: {e}"))
+    }
+
     /// 检查是否处于 Live 接管模式
     pub async fn is_takeover_active(&self) -> Result<bool, String> {
         let status = self.get_takeover_status().await?;
-        Ok(status.claude || status.codex || status.gemini || status.grokbuild)
+        Ok(status.claude || status.codex || status.gemini || status.grokbuild || status.pi)
     }
 
     /// 从异常退出中恢复（启动时调用）
@@ -2224,6 +2419,12 @@ impl ProxyService {
 
         if let Ok(config) = self.read_grok_live() {
             if Self::is_grok_live_taken_over(&config) {
+                return true;
+            }
+        }
+
+        if let Ok(config) = self.read_pi_live() {
+            if Self::is_pi_live_taken_over(&config) {
                 return true;
             }
         }
@@ -2295,6 +2496,10 @@ impl ProxyService {
             })
     }
 
+    fn is_pi_live_taken_over(config: &Value) -> bool {
+        crate::pi_config::has_takeover_markers(config, PROXY_TOKEN_PLACEHOLDER)
+    }
+
     /// 判断给定的 Live/备份配置是否已被代理接管（包含占位符）
     ///
     /// 用途：检测"备份里存的其实是代理配置"这种异常历史状态。
@@ -2307,6 +2512,7 @@ impl ProxyService {
             AppType::Codex => Self::is_codex_live_taken_over(config),
             AppType::Gemini => Self::is_gemini_live_taken_over(config),
             AppType::GrokBuild => Self::is_grok_live_taken_over(config),
+            AppType::Pi => Self::is_pi_live_taken_over(config),
             _ => false,
         }
     }
@@ -2404,6 +2610,30 @@ impl ProxyService {
                 .map_err(|e| format!("序列化 Codex 配置失败: {e}"))?,
             AppType::GrokBuild => serde_json::to_string(&effective_settings)
                 .map_err(|e| format!("序列化 Grok Build 配置失败: {e}"))?,
+            AppType::Pi => {
+                // Pi 的备份是整份 live 快照（models.json 原文 + settings +
+                // api_key 条目）：在既有备份（或当前 live 快照）上就地更新该
+                // 供应商的条目与选择，保留其它供应商、注释与格式。
+                let mut snapshot = self
+                    .db
+                    .get_live_backup(app_type)
+                    .await
+                    .map_err(|e| format!("读取 {app_type} 现有备份失败: {e}"))?
+                    .map(|backup| {
+                        serde_json::from_str::<Value>(&backup.original_config)
+                            .map_err(|e| format!("解析 {app_type} 现有备份失败: {e}"))
+                    })
+                    .transpose()?
+                    .or_else(|| self.read_pi_live().ok())
+                    .ok_or_else(|| format!("无法构建 {app_type} Live 备份快照"))?;
+                crate::pi_config::patch_snapshot_provider(
+                    &mut snapshot,
+                    &provider.id,
+                    &provider.settings_config,
+                )
+                .map_err(|e| format!("更新 {app_type} 备份快照失败: {e}"))?;
+                serde_json::to_string(&snapshot).map_err(|e| format!("序列化 Pi 配置失败: {e}"))?
+            }
             AppType::Gemini => {
                 // Gemini takeover 仅修改 .env；settings.json（含 mcpServers）保持原样。
                 let env_backup = if let Some(env) = effective_settings.get("env") {
@@ -2512,6 +2742,9 @@ impl ProxyService {
                         .await?;
                 } else if live_taken_over && matches!(app_type_enum, AppType::GrokBuild) {
                     self.sync_grok_live_from_provider_while_proxy_active(&provider)
+                        .await?;
+                } else if live_taken_over && matches!(app_type_enum, AppType::Pi) {
+                    self.sync_pi_live_from_provider_while_proxy_active(&provider)
                         .await?;
                 }
             }
@@ -3038,6 +3271,90 @@ impl ProxyService {
     fn write_grok_live(&self, config: &Value) -> Result<(), String> {
         crate::grok_config::write_grok_live_settings(config)
             .map_err(|e| format!("写入 Grok Build 配置失败: {e}"))
+    }
+
+    /// Pi 的 Live 快照（models.json 原文 + settings.json + auth.json 中的
+    /// api_key 条目；OAuth 凭据由 Pi 托管，绝不进入快照）。
+    fn read_pi_live(&self) -> Result<Value, String> {
+        crate::pi_config::read_live_snapshot().map_err(|e| format!("读取 Pi 配置失败: {e}"))
+    }
+
+    fn write_pi_live(&self, config: &Value) -> Result<(), String> {
+        crate::pi_config::write_live_snapshot(config, PROXY_TOKEN_PLACEHOLDER)
+            .map_err(|e| format!("写入 Pi 配置失败: {e}"))
+    }
+
+    /// Pi 的"当前供应商"解析：优先 CC Switch 记录的 current（接管/热切换
+    /// 会写入）；additive 模式下普通切换不写 current，此时回退到 Pi Live
+    /// 的 defaultProvider（若它对应某个 DB 供应商）。
+    fn resolve_pi_current_provider(&self) -> Result<Provider, String> {
+        if let Some(provider) = self.get_current_provider_for_app(&AppType::Pi)? {
+            return Ok(provider);
+        }
+        let live_selected = crate::pi_config::get_default_provider_id()
+            .map_err(|e| format!("读取 Pi 默认供应商失败: {e}"))?;
+        if let Some(live_id) = live_selected {
+            if let Ok(Some(provider)) = self.db.get_provider_by_id(&live_id, "pi") {
+                return Ok(provider);
+            }
+        }
+        Err("Pi 当前供应商不存在，无法接管 Live 配置".to_string())
+    }
+
+    /// 代理能否为该 Pi 供应商注入凭据（OAuth 登录由 Pi 托管，代理拿不到
+    /// token，只有 DB 里存了 API Key 的供应商才能被接管）。
+    fn pi_provider_has_injectable_key(provider: &Provider) -> bool {
+        provider
+            .settings_config
+            .get("apiKey")
+            .or_else(|| provider.settings_config.get("api_key"))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .is_some_and(|s| !s.is_empty())
+    }
+
+    /// 热切换/编辑时让 Pi Live 跟随目标供应商：把目标供应商条目的
+    /// baseUrl 改指本地代理、写入占位符标记并选中它；同时把上一个被接管
+    /// 条目恢复为 DB 里的原始配置（任一时刻至多一个条目带接管标记）。
+    pub async fn sync_pi_live_from_provider_while_proxy_active(
+        &self,
+        provider: &Provider,
+    ) -> Result<(), String> {
+        let (proxy_url, _) = self.build_proxy_urls().await?;
+        let proxy_pi_base_url = format!("{}/pi", proxy_url.trim_end_matches('/'));
+
+        let previous = crate::pi_config::apply_takeover_and_select(
+            &provider.id,
+            &provider.settings_config,
+            &proxy_pi_base_url,
+            PROXY_TOKEN_PLACEHOLDER,
+        )
+        .map_err(|e| format!("接管 Pi Live 配置失败: {e}"))?;
+
+        if let Some(prev_id) = previous {
+            if prev_id != provider.id {
+                match self.db.get_provider_by_id(&prev_id, "pi") {
+                    Ok(Some(prev_provider)) => {
+                        crate::pi_config::revert_provider_takeover(
+                            &prev_id,
+                            &prev_provider.settings_config,
+                            PROXY_TOKEN_PLACEHOLDER,
+                        )
+                        .map_err(|e| format!("恢复 Pi 原供应商 '{prev_id}' 配置失败: {e}"))?;
+                    }
+                    _ => {
+                        // 该条目不由 CC Switch 管理：只剥掉接管标记，避免留下
+                        // 指向本地代理的悬空路由。
+                        crate::pi_config::remove_provider_takeover_markers(
+                            &prev_id,
+                            PROXY_TOKEN_PLACEHOLDER,
+                        )
+                        .map_err(|e| format!("清理 Pi 原供应商 '{prev_id}' 接管标记失败: {e}"))?;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     // ==================== 原有方法 ====================
@@ -7284,5 +7601,370 @@ experimental_bearer_token = "PROXY_MANAGED"
             .expect("read backup")
             .expect("backup exists");
         assert_eq!(backup.original_config, original_backup);
+    }
+
+    // ==================== Pi takeover ====================
+
+    fn pi_provider_config(base_url: &str, api_key: Option<&str>, api: &str) -> Value {
+        let mut config = json!({
+            "type": api,
+            "baseUrl": base_url,
+            "models": [{ "id": "model-1", "contextWindow": 128000, "maxTokens": 8192 }],
+            "defaultModelId": "model-1"
+        });
+        if let Some(key) = api_key {
+            config["apiKey"] = json!(key);
+        }
+        config
+    }
+
+    /// Redirects `~/.pi/agent` resolution at a temp dir via PI_CODING_AGENT_DIR
+    /// and restores the env var on drop. `#[serial]` (shared with pi_config's
+    /// own tests) makes the env override race-free.
+    struct PiDirGuard {
+        dir: TempDir,
+        original: Option<String>,
+    }
+
+    impl PiDirGuard {
+        fn new() -> Self {
+            let dir = TempDir::new().expect("failed to create pi agent dir");
+            let original = env::var("PI_CODING_AGENT_DIR").ok();
+            env::set_var("PI_CODING_AGENT_DIR", dir.path());
+            Self { dir, original }
+        }
+
+        fn path(&self) -> &std::path::Path {
+            self.dir.path()
+        }
+    }
+
+    impl Drop for PiDirGuard {
+        fn drop(&mut self) {
+            match &self.original {
+                Some(value) => env::set_var("PI_CODING_AGENT_DIR", value),
+                None => env::remove_var("PI_CODING_AGENT_DIR"),
+            }
+        }
+    }
+
+    fn read_pi_models_json() -> Value {
+        let text = std::fs::read_to_string(crate::pi_config::get_pi_models_path())
+            .expect("read pi models.json");
+        json5::from_str(&text).expect("parse pi models.json")
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn pi_takeover_rewrites_selected_entry_and_restore_is_verbatim() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let _pi_dir = PiDirGuard::new();
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+
+        let provider = Provider::with_id(
+            "anthropic".to_string(),
+            "Anthropic".to_string(),
+            pi_provider_config(
+                "https://api.anthropic.com",
+                Some("sk-ant"),
+                "anthropic-messages",
+            ),
+            None,
+        );
+        db.save_provider("pi", &provider).expect("save provider");
+        db.set_current_provider("pi", "anthropic")
+            .expect("set db current");
+        crate::settings::set_current_provider(&AppType::Pi, Some("anthropic"))
+            .expect("set local current");
+
+        crate::pi_config::upsert_and_select("anthropic", provider.settings_config.clone())
+            .expect("seed pi live");
+        let original_models = std::fs::read_to_string(crate::pi_config::get_pi_models_path())
+            .expect("read original models.json");
+
+        service
+            .backup_live_config_strict(&AppType::Pi)
+            .await
+            .expect("backup pi live");
+        service
+            .takeover_live_config_strict(&AppType::Pi)
+            .await
+            .expect("takeover pi live");
+
+        let models = read_pi_models_json();
+        let entry = &models["providers"]["anthropic"];
+        assert_eq!(
+            entry["baseUrl"].as_str().expect("base url"),
+            "http://127.0.0.1:15721/pi"
+        );
+        assert_eq!(
+            entry["apiKey"].as_str().expect("api key marker"),
+            PROXY_TOKEN_PLACEHOLDER
+        );
+        assert!(service.detect_takeover_in_live_config_for_app(&AppType::Pi));
+        // auth.json keeps the real key — the proxy injects it from the DB.
+        let auth: Value = serde_json::from_str(
+            &std::fs::read_to_string(crate::pi_config::get_pi_auth_path()).expect("read auth"),
+        )
+        .expect("parse auth");
+        assert_eq!(auth["anthropic"]["key"].as_str().unwrap(), "sk-ant");
+
+        service
+            .restore_live_config_for_app_inner(&AppType::Pi)
+            .await
+            .expect("restore pi live");
+        let restored = std::fs::read_to_string(crate::pi_config::get_pi_models_path())
+            .expect("read restored models.json");
+        assert_eq!(restored, original_models, "restore must be verbatim");
+        assert!(!service.detect_takeover_in_live_config_for_app(&AppType::Pi));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn pi_hot_switch_reverts_previous_entry_and_takes_over_new() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let _pi_dir = PiDirGuard::new();
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+
+        let provider_a = Provider::with_id(
+            "a".to_string(),
+            "A".to_string(),
+            pi_provider_config("https://a.example.com", Some("sk-a"), "anthropic-messages"),
+            None,
+        );
+        let provider_b = Provider::with_id(
+            "b".to_string(),
+            "B".to_string(),
+            pi_provider_config(
+                "https://b.example.com/v1",
+                Some("sk-b"),
+                "openai-completions",
+            ),
+            None,
+        );
+        db.save_provider("pi", &provider_a).expect("save a");
+        db.save_provider("pi", &provider_b).expect("save b");
+        db.set_current_provider("pi", "a").expect("set db current");
+        crate::settings::set_current_provider(&AppType::Pi, Some("a")).expect("set local current");
+
+        crate::pi_config::upsert_and_select("a", provider_a.settings_config.clone())
+            .expect("seed a");
+        crate::pi_config::set_provider("b", provider_b.settings_config.clone()).expect("seed b");
+
+        service
+            .backup_live_config_strict(&AppType::Pi)
+            .await
+            .expect("backup");
+        service
+            .takeover_live_config_strict(&AppType::Pi)
+            .await
+            .expect("takeover");
+
+        service
+            .hot_switch_provider("pi", "b")
+            .await
+            .expect("hot switch to b");
+
+        // B is selected and carries the takeover fields.
+        let settings: Value = serde_json::from_str(
+            &std::fs::read_to_string(crate::pi_config::get_pi_settings_path())
+                .expect("read settings"),
+        )
+        .expect("parse settings");
+        assert_eq!(settings["defaultProvider"].as_str().unwrap(), "b");
+        assert_eq!(settings["defaultModel"].as_str().unwrap(), "model-1");
+
+        let models = read_pi_models_json();
+        let b_entry = &models["providers"]["b"];
+        assert_eq!(
+            b_entry["baseUrl"].as_str().unwrap(),
+            "http://127.0.0.1:15721/pi"
+        );
+        assert_eq!(b_entry["apiKey"].as_str().unwrap(), PROXY_TOKEN_PLACEHOLDER);
+        // A is reverted to its DB config (real baseUrl, no placeholder).
+        let a_entry = &models["providers"]["a"];
+        assert_eq!(
+            a_entry["baseUrl"].as_str().unwrap(),
+            "https://a.example.com"
+        );
+        assert!(
+            a_entry.get("apiKey").and_then(|v| v.as_str()) != Some(PROXY_TOKEN_PLACEHOLDER),
+            "previous entry must not keep the takeover marker"
+        );
+
+        // Logical current provider follows the switch.
+        assert_eq!(
+            crate::settings::get_effective_current_provider(&db, &AppType::Pi)
+                .expect("read current")
+                .as_deref(),
+            Some("b")
+        );
+
+        // The restore backup follows the switch: selection = b, entries pristine.
+        let backup = db
+            .get_live_backup("pi")
+            .await
+            .expect("read backup")
+            .expect("backup exists");
+        let snapshot: Value =
+            serde_json::from_str(&backup.original_config).expect("parse backup snapshot");
+        assert_eq!(snapshot["settings"]["defaultProvider"], "b");
+        let backup_models = crate::pi_config::parse_models_source(
+            snapshot["modelsSource"]
+                .as_str()
+                .expect("backup models source"),
+        )
+        .expect("parse backup models");
+        assert_eq!(
+            backup_models["providers"]["b"]["baseUrl"].as_str().unwrap(),
+            "https://b.example.com/v1"
+        );
+        assert!(
+            !snapshot["modelsSource"]
+                .as_str()
+                .unwrap()
+                .contains(PROXY_TOKEN_PLACEHOLDER),
+            "backup must stay pristine (no takeover markers)"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn pi_takeover_rejects_provider_without_injectable_key() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let pi_dir = PiDirGuard::new();
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+
+        // OAuth-backed provider: the credential lives in Pi's auth.json (Pi
+        // owns it) and the DB row has no API key the proxy could inject.
+        let provider = Provider::with_id(
+            "oauth-prov".to_string(),
+            "OAuth".to_string(),
+            pi_provider_config("https://oauth.example.com", None, "anthropic-messages"),
+            None,
+        );
+        db.save_provider("pi", &provider).expect("save provider");
+        db.set_current_provider("pi", "oauth-prov")
+            .expect("set db current");
+        crate::settings::set_current_provider(&AppType::Pi, Some("oauth-prov"))
+            .expect("set local current");
+
+        crate::pi_config::upsert_and_select("oauth-prov", provider.settings_config.clone())
+            .expect("seed pi live");
+        std::fs::write(
+            pi_dir.path().join("auth.json"),
+            r#"{ "oauth-prov": { "type": "oauth", "refresh": "r", "access": "a", "expires": 4102444800 } }"#,
+        )
+        .expect("seed oauth credential");
+
+        let err = service
+            .takeover_live_config_strict(&AppType::Pi)
+            .await
+            .expect_err("oauth-only provider must be rejected");
+        assert!(
+            err.contains("API Key") || err.contains("API key"),
+            "error should explain the missing injectable key: {err}"
+        );
+
+        // Live config must be untouched by the failed takeover.
+        let models = read_pi_models_json();
+        let entry = &models["providers"]["oauth-prov"];
+        assert_eq!(
+            entry["baseUrl"].as_str().unwrap(),
+            "https://oauth.example.com"
+        );
+        assert!(!service.detect_takeover_in_live_config_for_app(&AppType::Pi));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn pi_sync_live_token_skips_templates_and_placeholder() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let _pi_dir = PiDirGuard::new();
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+
+        let provider = Provider::with_id(
+            "a".to_string(),
+            "A".to_string(),
+            pi_provider_config("https://a.example.com", None, "anthropic-messages"),
+            None,
+        );
+        db.save_provider("pi", &provider).expect("save provider");
+
+        // Inline template is skipped; auth.json api_key is copied to the DB.
+        let snapshot = json!({
+            "modelsSource": "{ \"providers\": { \"a\": { \"apiKey\": \"$PI_A_KEY\" } } }",
+            "settings": { "defaultProvider": "a" },
+            "authApiKeys": { "a": "sk-live" }
+        });
+        service
+            .sync_live_config_to_provider(&AppType::Pi, &snapshot)
+            .await
+            .expect("sync live token");
+        let updated = db
+            .get_provider_by_id("a", "pi")
+            .expect("read provider")
+            .expect("provider exists");
+        assert_eq!(updated.settings_config["apiKey"], "sk-live");
+
+        // Template-only credential → no DB write.
+        let snapshot = json!({
+            "modelsSource": "{ \"providers\": { \"a\": { \"apiKey\": \"${PI_A_KEY}\" } } }",
+            "settings": { "defaultProvider": "a" },
+            "authApiKeys": {}
+        });
+        db.save_provider(
+            "pi",
+            &Provider::with_id(
+                "a".to_string(),
+                "A".to_string(),
+                pi_provider_config("https://a.example.com", None, "anthropic-messages"),
+                None,
+            ),
+        )
+        .expect("clear apiKey");
+        service
+            .sync_live_config_to_provider(&AppType::Pi, &snapshot)
+            .await
+            .expect("sync template-only");
+        let updated = db
+            .get_provider_by_id("a", "pi")
+            .expect("read provider")
+            .expect("provider exists");
+        assert!(
+            updated.settings_config.get("apiKey").is_none(),
+            "env templates must not be synced into the DB"
+        );
+
+        // Placeholder-only credential → no DB write.
+        let snapshot = json!({
+            "modelsSource": format!("{{ \"providers\": {{ \"a\": {{ \"apiKey\": \"{PROXY_TOKEN_PLACEHOLDER}\" }} }} }}"),
+            "settings": { "defaultProvider": "a" },
+            "authApiKeys": {}
+        });
+        service
+            .sync_live_config_to_provider(&AppType::Pi, &snapshot)
+            .await
+            .expect("sync placeholder-only");
+        let updated = db
+            .get_provider_by_id("a", "pi")
+            .expect("read provider")
+            .expect("provider exists");
+        assert!(
+            updated.settings_config.get("apiKey").is_none(),
+            "the takeover placeholder must not be synced into the DB"
+        );
     }
 }

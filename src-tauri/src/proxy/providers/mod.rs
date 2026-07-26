@@ -25,6 +25,7 @@ mod gemini;
 pub(crate) mod gemini_schema;
 pub mod gemini_shadow;
 pub mod models;
+mod pi;
 pub(crate) mod reasoning_bridge;
 pub mod streaming;
 pub mod streaming_codex_anthropic;
@@ -64,6 +65,9 @@ pub use codex::{
     should_convert_codex_responses_to_chat,
 };
 pub use gemini::GeminiAdapter;
+pub use pi::{
+    pi_provider_supports_anthropic_messages, pi_provider_supports_chat_completions, PiAdapter,
+};
 
 /// 供应商类型枚举
 ///
@@ -210,6 +214,13 @@ impl ProviderType {
             AppType::OpenCode | AppType::OpenClaw | AppType::Hermes => ProviderType::Codex,
             // Kimi Code is not proxy-managed — do not pretend it is Codex.
             AppType::KimiCode => ProviderType::Codex,
+            // Pi is proxy-managed via the /pi namespace, but providers are
+            // per-provider protocol-typed (anthropic-messages vs
+            // openai-completions), so ProviderType has no single right answer;
+            // get_adapter returns the dedicated PiAdapter which resolves auth
+            // per provider config. This arm is only a placeholder for the
+            // legacy ProviderType inference path.
+            AppType::Pi => ProviderType::Codex,
         }
     }
 
@@ -267,6 +278,10 @@ pub fn get_adapter(app_type: &AppType) -> Box<dyn ProviderAdapter> {
         // Fail closed: Kimi Code has no local-proxy adapter. Callers must not
         // enable takeover for this app (UI already excludes additive apps).
         AppType::KimiCode => Box::new(CodexAdapter::new()),
+        // Pi is proxy-managed via the /pi namespace. The dedicated adapter
+        // resolves base URL / auth style per provider protocol type
+        // (anthropic-messages vs openai-completions).
+        AppType::Pi => Box::new(PiAdapter::new()),
     }
 }
 

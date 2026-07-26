@@ -439,6 +439,28 @@ impl TokenUsage {
         None
     }
 
+    /// Fresh-input 变体：从 OpenAI Chat Completions 响应解析，并把 cache
+    /// 读/写两桶从 input_tokens 中扣除（`prompt_tokens` 是 cache-inclusive）。
+    ///
+    /// 供以 FRESH 口径入库的应用（如 Pi）使用：proxy 行与同 app 的 session
+    /// 行 input 口径一致，跨源去重指纹（精确比较存储值）才能命中。
+    pub fn from_openai_response_fresh(body: &Value) -> Option<Self> {
+        Self::from_openai_response(body).map(Self::into_fresh_input)
+    }
+
+    /// Fresh-input 流式变体，见 [`Self::from_openai_response_fresh`]。
+    pub fn from_openai_stream_events_fresh(events: &[Value]) -> Option<Self> {
+        Self::from_openai_stream_events(events).map(Self::into_fresh_input)
+    }
+
+    fn into_fresh_input(mut self) -> Self {
+        self.input_tokens = self
+            .input_tokens
+            .saturating_sub(self.cache_read_tokens)
+            .saturating_sub(self.cache_creation_tokens);
+        self
+    }
+
     /// 从 Gemini API 非流式响应解析
     pub fn from_gemini_response(body: &Value) -> Option<Self> {
         let usage = body.get("usageMetadata")?;

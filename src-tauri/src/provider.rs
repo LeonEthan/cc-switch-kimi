@@ -199,6 +199,12 @@ impl Provider {
                 };
                 (base_url, api_key)
             }
+            // Pi settingsConfig uses camelCase JSON (apiKey / baseUrl), mirroring
+            // the models.json provider shape.
+            AppType::Pi => (
+                str_at(settings.get("baseUrl")),
+                str_at(settings.get("apiKey")),
+            ),
             // OpenClaw (openclaw.json) flattens credentials at the top level, camelCase.
             AppType::OpenClaw => (
                 str_at(settings.get("baseUrl")),

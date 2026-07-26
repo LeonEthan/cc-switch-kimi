@@ -27,6 +27,7 @@ pub fn prompt_file_path(app: &AppType) -> Result<PathBuf, AppError> {
         AppType::OpenClaw => get_openclaw_dir(),
         AppType::Hermes => crate::hermes_config::get_hermes_dir(),
         AppType::KimiCode => crate::kimi_code_config::get_kimi_code_dir(),
+        AppType::Pi => crate::pi_config::get_pi_dir(),
         AppType::ClaudeDesktop => unreachable!("handled above"),
     };
 
@@ -34,7 +35,12 @@ pub fn prompt_file_path(app: &AppType) -> Result<PathBuf, AppError> {
         AppType::Claude => "CLAUDE.md",
         AppType::Codex => "AGENTS.md",
         AppType::Gemini => "GEMINI.md",
-        AppType::GrokBuild | AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::KimiCode => "AGENTS.md",
+        AppType::GrokBuild
+        | AppType::OpenCode
+        | AppType::OpenClaw
+        | AppType::Hermes
+        | AppType::KimiCode
+        | AppType::Pi => "AGENTS.md",
         AppType::ClaudeDesktop => unreachable!("handled above"),
     };
 

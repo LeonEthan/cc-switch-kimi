@@ -13,7 +13,8 @@ use super::{
     forwarder::ActiveConnectionGuard,
     handler_config::{
         claude_stream_usage_event_filter, codex_stream_usage_event_filter, CLAUDE_PARSER_CONFIG,
-        CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG,
+        CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG, PI_CHAT_PARSER_CONFIG,
+        PI_MESSAGES_PARSER_CONFIG,
     },
     handler_context::RequestContext,
     providers::{
@@ -137,6 +138,29 @@ pub async fn handle_claude_desktop_messages(
     .await
 }
 
+/// 处理 /pi/v1/messages 请求（Pi CLI，Anthropic Messages 协议）
+///
+/// Pi 的供应商是 per-provider 协议类型的：故障转移链里可能混有
+/// openai-completions 供应商，本路由只转发给 anthropic-messages 兼容的
+/// 供应商（协议不转换）。
+pub async fn handle_pi_messages(
+    State(state): State<ProxyState>,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    handle_messages_for_app_filtered(
+        state,
+        request,
+        AppType::Pi,
+        "Pi",
+        "pi",
+        Some("/pi"),
+        &PI_MESSAGES_PARSER_CONFIG,
+        super::providers::pi_provider_supports_anthropic_messages,
+        "anthropic-messages",
+    )
+    .await
+}
+
 pub async fn handle_claude_desktop_models(
     State(state): State<ProxyState>,
     headers: axum::http::HeaderMap,
@@ -160,6 +184,32 @@ async fn handle_messages_for_app(
     tag: &'static str,
     app_type_str: &'static str,
     strip_prefix: Option<&'static str>,
+) -> Result<axum::response::Response, ProxyError> {
+    handle_messages_for_app_filtered(
+        state,
+        request,
+        app_type,
+        tag,
+        app_type_str,
+        strip_prefix,
+        &CLAUDE_PARSER_CONFIG,
+        |_| true,
+        "",
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn handle_messages_for_app_filtered(
+    state: ProxyState,
+    request: axum::extract::Request,
+    app_type: AppType,
+    tag: &'static str,
+    app_type_str: &'static str,
+    strip_prefix: Option<&'static str>,
+    parser_config: &'static super::handler_config::UsageParserConfig,
+    provider_filter: fn(&crate::provider::Provider) -> bool,
+    required_protocol: &'static str,
 ) -> Result<axum::response::Response, ProxyError> {
     let (parts, body) = request.into_parts();
     let method = parts.method.clone();
@@ -192,6 +242,22 @@ async fn handle_messages_for_app(
 
     // 转发请求
     let forwarder = ctx.create_forwarder(&state);
+    let providers = ctx.get_providers();
+    let providers: Vec<crate::provider::Provider> =
+        providers.into_iter().filter(provider_filter).collect();
+    if providers.is_empty() {
+        // 对默认调用方（filter 恒真）不可达：RequestContext 已在空链时提前报错。
+        // 仅协议过滤路由（/pi/*）会真正命中——链上全部供应商协议不匹配时，
+        // 明确失败而不是把请求发给说不通该协议的上游。
+        if !required_protocol.is_empty() {
+            log::warn!(
+                "[{}] 没有兼容 {} 协议的可用供应商（路由不做协议转换）",
+                tag,
+                required_protocol
+            );
+        }
+        return Err(ProxyError::NoAvailableProvider);
+    }
     let mut result = match forwarder
         .forward_with_retry(
             &app_type,
@@ -200,7 +266,7 @@ async fn handle_messages_for_app(
             body.clone(),
             headers,
             extensions,
-            ctx.get_providers(),
+            providers,
         )
         .await
     {
@@ -243,14 +309,7 @@ async fn handle_messages_for_app(
     }
 
     // 通用响应处理（透传模式）
-    process_response(
-        response,
-        &ctx,
-        &state,
-        &CLAUDE_PARSER_CONFIG,
-        connection_guard,
-    )
-    .await
+    process_response(response, &ctx, &state, parser_config, connection_guard).await
 }
 
 fn validate_claude_desktop_gateway_auth(
@@ -699,6 +758,51 @@ pub async fn handle_chat_completions(
     State(state): State<ProxyState>,
     request: axum::extract::Request,
 ) -> Result<axum::response::Response, ProxyError> {
+    handle_chat_completions_for_app(
+        state,
+        request,
+        AppType::Codex,
+        "Codex",
+        "codex",
+        &OPENAI_PARSER_CONFIG,
+        |_| true,
+        "",
+    )
+    .await
+}
+
+/// 处理 /pi/v1/chat/completions 请求（Pi CLI，OpenAI Chat Completions 协议）
+///
+/// 与 [`handle_pi_messages`] 一样按协议过滤故障转移链：只转发给
+/// openai-completions 兼容的供应商。
+pub async fn handle_pi_chat_completions(
+    State(state): State<ProxyState>,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    handle_chat_completions_for_app(
+        state,
+        request,
+        AppType::Pi,
+        "Pi",
+        "pi",
+        &PI_CHAT_PARSER_CONFIG,
+        super::providers::pi_provider_supports_chat_completions,
+        "openai-completions",
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn handle_chat_completions_for_app(
+    state: ProxyState,
+    request: axum::extract::Request,
+    app_type: AppType,
+    tag: &'static str,
+    app_type_str: &'static str,
+    parser_config: &'static super::handler_config::UsageParserConfig,
+    provider_filter: fn(&crate::provider::Provider) -> bool,
+    required_protocol: &'static str,
+) -> Result<axum::response::Response, ProxyError> {
     let (parts, req_body) = request.into_parts();
     let method = parts.method.clone();
     let uri = parts.uri;
@@ -714,7 +818,7 @@ pub async fn handle_chat_completions(
         .map_err(|e| ProxyError::Internal(format!("Failed to parse request body: {e}")))?;
 
     let mut ctx =
-        RequestContext::new(&state, &body, &headers, AppType::Codex, "Codex", "codex").await?;
+        RequestContext::new(&state, &body, &headers, app_type.clone(), tag, app_type_str).await?;
     let endpoint = endpoint_with_query(&uri, "/chat/completions");
 
     let is_stream = body
@@ -723,15 +827,24 @@ pub async fn handle_chat_completions(
         .unwrap_or(false);
 
     let forwarder = ctx.create_forwarder(&state);
+    let providers = ctx.get_providers();
+    let providers: Vec<crate::provider::Provider> =
+        providers.into_iter().filter(provider_filter).collect();
+    if providers.is_empty() {
+        // 默认调用方（filter 恒真）不可达：RequestContext 已在空链时提前报错；
+        // /pi 协议过滤路由命中时明确失败，不做跨协议转发。
+        if !required_protocol.is_empty() {
+            log::warn!(
+                "[{}] 没有兼容 {} 协议的可用供应商（路由不做协议转换）",
+                tag,
+                required_protocol
+            );
+        }
+        return Err(ProxyError::NoAvailableProvider);
+    }
     let mut result = match forwarder
         .forward_with_retry(
-            &AppType::Codex,
-            method,
-            &endpoint,
-            body,
-            headers,
-            extensions,
-            ctx.get_providers(),
+            &app_type, method, &endpoint, body, headers, extensions, providers,
         )
         .await
     {
@@ -750,14 +863,7 @@ pub async fn handle_chat_completions(
     ctx.provider = result.provider;
     let response = result.response;
 
-    process_response(
-        response,
-        &ctx,
-        &state,
-        &OPENAI_PARSER_CONFIG,
-        connection_guard,
-    )
-    .await
+    process_response(response, &ctx, &state, parser_config, connection_guard).await
 }
 
 /// 处理 /v1/responses 请求（OpenAI Responses API - Codex CLI 透传）

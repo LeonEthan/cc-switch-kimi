@@ -56,7 +56,7 @@ const UnifiedMcpPanel = React.forwardRef<
   }, [serversMap]);
 
   const enabledCounts = useMemo(() => {
-    const counts = {
+    const counts: Record<AppId, number> = {
       claude: 0,
       "claude-desktop": 0,
       codex: 0,
@@ -65,6 +65,9 @@ const UnifiedMcpPanel = React.forwardRef<
       opencode: 0,
       openclaw: 0,
       hermes: 0,
+      kimicode: 0,
+      // Pi 无原生 MCP，计数恒为 0（MCP_APP_IDS 不含 pi）。
+      pi: 0,
     };
     serverEntries.forEach(([_, server]) => {
       for (const app of MCP_APP_IDS) {

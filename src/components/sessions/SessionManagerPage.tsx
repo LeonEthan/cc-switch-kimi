@@ -89,7 +89,8 @@ type ProviderFilter =
   | "openclaw"
   | "gemini"
   | "hermes"
-  | "kimicode";
+  | "kimicode"
+  | "pi";
 
 type SessionListViewMode = "flat" | "grouped";
 
@@ -1146,7 +1147,13 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                                   name="kimicode"
                                   size={14}
                                 />
-                                <span>Kimi Code</span>
+                                <span>{t("apps.kimicode")}</span>
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="pi">
+                              <div className="flex items-center gap-2">
+                                <ProviderIcon icon="pi" name="pi" size={14} />
+                                <span>{t("apps.pi")}</span>
                               </div>
                             </SelectItem>
                           </SelectContent>

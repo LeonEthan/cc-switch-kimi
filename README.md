@@ -2,8 +2,8 @@
 
 # CC Switch · Kimi Code fork
 
-### Community fork of CC Switch with first-class **Kimi Code CLI** support  
-*(Claude Code · Claude Desktop · Codex · Gemini CLI · Grok Build · OpenCode · OpenClaw · Hermes · **Kimi Code**)*
+### Community fork of CC Switch with first-class **Kimi Code CLI** and **Pi** support  
+*(Claude Code · Claude Desktop · Codex · Gemini CLI · Grok Build · OpenCode · OpenClaw · Hermes · **Kimi Code** · **Pi**)*
 
 [![GitHub](https://img.shields.io/badge/repo-LeonEthan%2Fcc--switch--kimi-blue)](https://github.com/LeonEthan/cc-switch-kimi)
 [![Upstream](https://img.shields.io/badge/upstream-farion1231%2Fcc--switch-lightgrey)](https://github.com/farion1231/cc-switch)
@@ -17,7 +17,7 @@ English | [中文](README_ZH.md) | [日本語](README_JA.md) | [Deutsch](README_
 > [!IMPORTANT]
 > **This is a community fork, not the official CC Switch product.**  
 > - Official app / website / notarized releases: **[ccswitch.io](https://ccswitch.io)** · [farion1231/cc-switch](https://github.com/farion1231/cc-switch)  
-> - **This repo** adds **Kimi Code** as a managed app (providers, MCP, Skills, sessions, usage import, CLI install/update in About).  
+> - **This repo** adds **Kimi Code** as a managed app (providers, MCP, Skills, sessions, usage import, CLI install/update in About) and **Pi** as a managed app (providers, sessions, usage import, local proxy takeover — Pi keeps owning its OAuth).  
 > - **Do not** install via official Homebrew (`brew install --cask cc-switch`) or the official auto-updater if you want to keep these fork features — they ship **upstream** builds without Kimi Code.  
 > - Same data path as official: `~/.cc-switch/`. **Disable in-app auto-update** when running a self-built fork package.  
 > Full details: **[docs/FORK.md](docs/FORK.md)**.
@@ -199,12 +199,13 @@ TeamoRouter also offers enterprise features including centralized billing, team 
 
 ## Why this fork?
 
-This fork keeps everything useful about **upstream CC Switch** and adds **Kimi Code CLI** as a first-class managed app (additive config under `~/.kimi-code`, no local proxy takeover). Use **official** CC Switch if you do not need that; use **this repo** if you do.
+This fork keeps everything useful about **upstream CC Switch** and adds **Kimi Code CLI** (additive config under `~/.kimi-code`, no local proxy takeover) and the **Pi coding agent** (additive config under `~/.pi/agent`, **with** local proxy takeover) as first-class managed apps. Use **official** CC Switch if you do not need that; use **this repo** if you do.
 
 Upstream value proposition (unchanged): one desktop app instead of hand-editing JSON/TOML/`.env` for Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw, Hermes — plus MCP, Skills, tray switching, SQLite with atomic writes.
 
-- **One App, Nine Tools (this fork)** — Upstream eight, plus **Kimi Code**
+- **One App, Ten Tools (this fork)** — Upstream eight, plus **Kimi Code** and **Pi**
 - **Kimi Code** — Providers, MCP/Skills, Session Manager, Usage import from `wire.jsonl`, About CLI install/update (`kimi`)
+- **Pi** — Providers in `~/.pi/agent/models.json`, Session Manager, session usage import, and full local proxy takeover (`/pi` routes) with failover; Pi keeps owning its OAuth tokens (CC Switch never copies them)
 - **No More Manual Editing** — 50+ provider presets including AWS Bedrock, NVIDIA NIM, and community relays; just pick and switch
 - **Unified MCP & Skills Management** — Claude, Codex, Gemini, Grok Build, OpenCode, Hermes, and **Kimi Code** with bidirectional sync
 - **System Tray Quick Switch** — Switch providers instantly from the tray menu, no need to open the full app
@@ -226,15 +227,16 @@ See **[docs/FORK.md](docs/FORK.md)** for install warnings, auto-update, and roll
 
 ### Provider Management
 
-- **9 supported tools (this fork), 50+ presets** — Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw, Hermes, **Kimi Code**; copy your key and import with one click
+- **10 supported tools (this fork), 50+ presets** — Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw, Hermes, **Kimi Code**, **Pi**; copy your key and import with one click
 - **Universal providers** — One config syncs to Claude Code, Codex, and Gemini CLI
 - **Kimi Code** — Additive live providers in `~/.kimi-code/config.toml` (same class as Hermes/OpenCode)
+- **Pi** — Additive live providers in `~/.pi/agent/models.json` (coexists with your existing Pi setup; OAuth stays Pi-owned)
 - One-click switching, system tray quick access, drag-and-drop sorting, import/export
 
 ### Proxy & Failover
 
 - **Local proxy with hot-switching** — Format conversion, auto-failover, circuit breaker, provider health monitoring, and request rectifier
-- **App-level takeover** — Independently proxy Claude, Codex, Gemini, or Grok Build, down to individual providers
+- **App-level takeover** — Independently proxy Claude, Codex, Gemini, Grok Build, or **Pi**, down to individual providers
 - **Kimi Code / Hermes / OpenCode** — No local proxy takeover in this fork (manage live config only)
 
 ### MCP, Prompts & Skills
@@ -247,10 +249,11 @@ See **[docs/FORK.md](docs/FORK.md)** for install warnings, auto-update, and roll
 
 - **Usage dashboard** — Track spending, requests, and tokens with trend charts, detailed request logs, and custom per-model pricing
 - **Kimi Code sessions** — Sync imports turn-level usage from `~/.kimi-code` session logs (`kimicode_session` data source)
+- **Pi sessions** — Sync imports per-request usage from `~/.pi/agent` session logs (`pi_session` data source), deduped against proxy rows
 
 ### Session Manager & Workspace
 
-- Browse, search, and restore conversation history across supported session sources (including **Kimi Code** `wire.jsonl`)
+- Browse, search, and restore conversation history across supported session sources (including **Kimi Code** `wire.jsonl` and **Pi** session logs)
 - **Workspace editor** (OpenClaw) — Edit agent files (AGENTS.md, SOUL.md, etc.) with Markdown preview
 
 ### System & Platform
@@ -264,14 +267,14 @@ See **[docs/FORK.md](docs/FORK.md)** for install warnings, auto-update, and roll
 <details>
 <summary><strong>Which AI tools does this fork support?</strong></summary>
 
-**This fork** supports nine tools: **Claude Code**, **Claude Desktop**, **Codex**, **Gemini CLI**, **Grok Build**, **OpenCode**, **OpenClaw**, **Hermes**, and **Kimi Code**. Each tool has dedicated provider presets and configuration management. Official upstream currently ships eight (without Kimi Code). Details: [docs/FORK.md](docs/FORK.md).
+**This fork** supports ten tools: **Claude Code**, **Claude Desktop**, **Codex**, **Gemini CLI**, **Grok Build**, **OpenCode**, **OpenClaw**, **Hermes**, **Kimi Code**, and **Pi**. Each tool has dedicated provider presets and configuration management. Official upstream currently ships eight (without Kimi Code and Pi). Details: [docs/FORK.md](docs/FORK.md).
 
 </details>
 
 <details>
 <summary><strong>Is this the official CC Switch?</strong></summary>
 
-**No.** Official product: [ccswitch.io](https://ccswitch.io) / [farion1231/cc-switch](https://github.com/farion1231/cc-switch). This repository (`LeonEthan/cc-switch-kimi`) is a community fork focused on **Kimi Code** integration. Same default data directory (`~/.cc-switch`); disable auto-update when running a fork build.
+**No.** Official product: [ccswitch.io](https://ccswitch.io) / [farion1231/cc-switch](https://github.com/farion1231/cc-switch). This repository (`LeonEthan/cc-switch-kimi`) is a community fork focused on **Kimi Code** and **Pi** integration. Same default data directory (`~/.cc-switch`); disable auto-update when running a fork build.
 
 </details>
 

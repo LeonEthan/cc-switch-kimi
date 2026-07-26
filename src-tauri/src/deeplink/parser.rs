@@ -91,9 +91,10 @@ fn parse_provider_deeplink(
             | "kimicode"
             | "kimi-code"
             | "kimi"
+            | "pi"
     ) {
         return Err(AppError::InvalidInput(format!(
-            "Invalid app type: must be 'claude', 'codex', 'gemini', 'grokbuild', 'opencode', 'openclaw', 'hermes', or 'kimicode', got '{app}'"
+            "Invalid app type: must be 'claude', 'codex', 'gemini', 'grokbuild', 'opencode', 'openclaw', 'hermes', 'kimicode', or 'pi', got '{app}'"
         )));
     }
 
@@ -209,9 +210,10 @@ fn parse_prompt_deeplink(
             | "kimicode"
             | "kimi-code"
             | "kimi"
+            | "pi"
     ) {
         return Err(AppError::InvalidInput(format!(
-            "Invalid app type: must be 'claude', 'codex', 'gemini', 'grokbuild', 'opencode', 'openclaw', 'hermes', or 'kimicode', got '{app}'"
+            "Invalid app type: must be 'claude', 'codex', 'gemini', 'grokbuild', 'opencode', 'openclaw', 'hermes', 'kimicode', or 'pi', got '{app}'"
         )));
     }
 
@@ -291,9 +293,10 @@ fn parse_mcp_deeplink(
                 | "kimicode"
                 | "kimi-code"
                 | "kimi"
+                | "pi"
         ) {
             return Err(AppError::InvalidInput(format!(
-                "Invalid app in 'apps': must be 'claude', 'codex', 'gemini', 'grokbuild', 'opencode', 'openclaw', 'hermes', or 'kimicode', got '{trimmed}'"
+                "Invalid app in 'apps': must be 'claude', 'codex', 'gemini', 'grokbuild', 'opencode', 'openclaw', 'hermes', 'kimicode', or 'pi', got '{trimmed}'"
             )));
         }
     }

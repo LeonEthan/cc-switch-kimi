@@ -25,6 +25,7 @@ export const APP_IDS: AppId[] = [
   "openclaw",
   "hermes",
   "kimicode",
+  "pi",
 ];
 
 /** App IDs shown in Skills panels (excludes OpenClaw — it doesn't support Skills) */
@@ -36,10 +37,11 @@ export const SKILLS_APP_IDS: AppId[] = [
   "opencode",
   "hermes",
   "kimicode",
+  "pi",
 ];
 
-/** App IDs shown in MCP panels (excludes OpenClaw) */
-export const MCP_APP_IDS: AppId[] = [...SKILLS_APP_IDS];
+/** App IDs shown in MCP panels (excludes OpenClaw and Pi — no native MCP) */
+export const MCP_APP_IDS: AppId[] = SKILLS_APP_IDS.filter((id) => id !== "pi");
 
 export const APP_ICON_MAP: Record<AppId, AppConfig> = {
   claude: {
@@ -141,5 +143,13 @@ export const APP_ICON_MAP: Record<AppId, AppConfig> = {
       "bg-sky-500/10 ring-1 ring-sky-500/20 hover:bg-sky-500/20 text-sky-700 dark:text-sky-300",
     badgeClass:
       "bg-sky-500/10 text-sky-700 dark:text-sky-300 hover:bg-sky-500/20 border-0 gap-1.5",
+  },
+  pi: {
+    label: "Pi",
+    icon: <ProviderIcon icon="pi" name="Pi" size={14} showFallback={false} />,
+    activeClass:
+      "bg-teal-500/10 ring-1 ring-teal-500/20 hover:bg-teal-500/20 text-teal-700 dark:text-teal-300",
+    badgeClass:
+      "bg-teal-500/10 text-teal-700 dark:text-teal-300 hover:bg-teal-500/20 border-0 gap-1.5",
   },
 };

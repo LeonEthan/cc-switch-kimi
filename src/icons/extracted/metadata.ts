@@ -519,6 +519,13 @@ export const iconMetadata: Record<string, IconMetadata> = {
     keywords: [],
     defaultColor: "currentColor",
   },
+  pi: {
+    name: "pi",
+    displayName: "Pi",
+    category: "ai-provider",
+    keywords: ["pi", "pi.dev", "coding agent", "terminal"],
+    defaultColor: "currentColor",
+  },
   stability: {
     name: "stability",
     displayName: "stability",

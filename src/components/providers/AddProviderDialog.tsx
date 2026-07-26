@@ -8,6 +8,7 @@ import { FullScreenPanel } from "@/components/common/FullScreenPanel";
 import type { Provider, CustomEndpoint, UniversalProvider } from "@/types";
 import type { AppId } from "@/lib/api";
 import { universalProvidersApi } from "@/lib/api";
+import { isAdditiveApp } from "@/lib/api/additiveApps";
 import {
   ProviderForm,
   type ProviderFormValues,
@@ -158,14 +159,8 @@ export function AddProviderDialog({
           values.presetId === GROKBUILD_OFFICIAL_PROVIDER_ID;
       }
 
-      // OpenCode/OpenClaw: pass providerKey for ID generation
-      if (
-        (appId === "opencode" ||
-          appId === "openclaw" ||
-          appId === "hermes" ||
-          appId === "kimicode") &&
-        values.providerKey
-      ) {
+      // Additive apps need a stable `providerKey` for ID generation.
+      if (isAdditiveApp(appId) && values.providerKey) {
         providerData.providerKey = values.providerKey;
       }
 
@@ -291,6 +286,12 @@ export function AddProviderDialog({
             addUrl(parsedConfig.base_url as string);
           }
         } else if (appId === "kimicode") {
+          if (parsedConfig.baseUrl) {
+            addUrl(parsedConfig.baseUrl as string);
+          } else if (parsedConfig.base_url) {
+            addUrl(parsedConfig.base_url as string);
+          }
+        } else if (appId === "pi") {
           if (parsedConfig.baseUrl) {
             addUrl(parsedConfig.baseUrl as string);
           } else if (parsedConfig.base_url) {

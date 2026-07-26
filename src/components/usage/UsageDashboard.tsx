@@ -72,6 +72,7 @@ const APP_FILTER_ICON: Record<AppType, string> = {
   grokbuild: "grok",
   opencode: "opencode",
   kimicode: "kimi",
+  pi: "pi",
 };
 
 // Select 的 "all" 哨兵和用户自定义名称同处一个值域——真有来源/模型叫 "all"

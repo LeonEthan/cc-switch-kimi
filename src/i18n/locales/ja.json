@@ -146,6 +146,10 @@
     "officialPartner": "公式パートナー",
     "managedByHermes": "Hermes 管理",
     "managedByHermesHint": "Hermes の providers: dict で定義されています。Hermes Web UI で編集または削除してください。",
+    "managedByKimiCode": "Kimi 管理",
+    "managedByKimiCodeHint": "Kimi Code OAuth によって管理されています。CLI で /login を使用して変更してください",
+    "managedByPi": "Pi 管理",
+    "managedByPiHint": "Pi によって管理されています（OAuth は Pi が所有）。Pi で /login を使用して変更してください",
     "openTerminal": "ターミナルを開く",
     "terminalOpened": "ターミナルを開きました",
     "terminalOpenFailed": "ターミナルを開けませんでした",
@@ -875,7 +879,9 @@
     },
     "saveFailedGeneric": "保存に失敗しました。もう一度お試しください",
     "kimiCodeConfigDir": "Kimi Code 設定ディレクトリ",
-    "browsePlaceholderKimiCode": "~/.kimi-code"
+    "piConfigDir": "Pi 設定ディレクトリ",
+    "browsePlaceholderKimiCode": "~/.kimi-code",
+    "browsePlaceholderPi": "~/.pi/agent"
   },
   "apps": {
     "claude": "Claude",
@@ -888,7 +894,8 @@
     "opencode": "OpenCode",
     "openclaw": "OpenClaw",
     "hermes": "Hermes",
-    "kimicode": "Kimi Code"
+    "kimicode": "Kimi Code",
+    "pi": "Pi"
   },
   "grokBuild": {
     "apiBackend": "API Backend",
@@ -1506,7 +1513,8 @@
       "gemini": "Gemini",
       "opencode": "OpenCode",
       "grokbuild": "Grok Build",
-      "kimicode": "Kimi Code"
+      "kimicode": "Kimi Code",
+      "pi": "Pi"
     },
     "rawInputLabel": "原始",
     "dataSources": "データソース",
@@ -1518,7 +1526,8 @@
       "gemini_session": "Gemini セッション",
       "opencode_session": "OpenCode セッション",
       "grok_session": "Grok Build セッション",
-      "kimicode_session": "Kimi Code セッション"
+      "kimicode_session": "Kimi Code セッション",
+      "pi_session": "Pi セッション"
     },
     "sessionSync": {
       "trigger": "セッションログを同期",
@@ -3037,6 +3046,25 @@
       "defaultModel": "デフォルトモデル",
       "selectModel": "モデルを選択",
       "defaultModelHint": "このプロバイダーに切り替えると default_model に書き込まれます"
+    }
+  },
+  "pi": {
+    "form": {
+      "providerKey": "プロバイダーキー",
+      "providerKeyHint": "~/.pi/agent/models.json の providers.<key> に対応",
+      "providerKeyRequired": "プロバイダーキーを入力してください",
+      "providerKeyInvalid": "無効な形式です。小文字、数字、ハイフンのみ使用できます",
+      "providerKeyDuplicate": "このキーは既に使用されています",
+      "type": "API プロトコル",
+      "baseUrl": "Base URL",
+      "models": "モデル",
+      "modelId": "モデル ID",
+      "modelName": "表示名",
+      "contextWindow": "コンテキストウィンドウ",
+      "maxTokens": "最大出力トークン",
+      "defaultModel": "デフォルトモデル",
+      "selectModel": "モデルを選択",
+      "defaultModelHint": "このプロバイダーを有効にすると settings.json の defaultModel に書き込まれます"
     }
   }
 }

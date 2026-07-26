@@ -156,11 +156,12 @@ fn probe_wire(path: &Path) -> (Option<i64>, Option<i64>, Option<String>) {
         };
         let typ = value.get("type").and_then(Value::as_str).unwrap_or("");
         if typ == "metadata" {
-            if let Some(ts) = value
-                .get("created_at")
-                .and_then(Value::as_i64)
-                .or_else(|| value.get("created_at").and_then(Value::as_u64).map(|u| u as i64))
-            {
+            if let Some(ts) = value.get("created_at").and_then(Value::as_i64).or_else(|| {
+                value
+                    .get("created_at")
+                    .and_then(Value::as_u64)
+                    .map(|u| u as i64)
+            }) {
                 created = Some(normalize_ts(ts));
             }
         }
@@ -212,11 +213,7 @@ fn extract_message_text(value: &Value) -> String {
 }
 
 /// Delete a Kimi Code session directory (parent of agents/main/wire.jsonl).
-pub fn delete_session(
-    _root: &Path,
-    source_path: &Path,
-    _session_id: &str,
-) -> Result<bool, String> {
+pub fn delete_session(_root: &Path, source_path: &Path, _session_id: &str) -> Result<bool, String> {
     // source_path points at wire.jsonl → session dir is ../../..
     let session_dir = source_path
         .parent() // main
@@ -231,14 +228,17 @@ pub fn delete_session(
     if !session_dir.exists() {
         return Ok(false);
     }
-    std::fs::remove_dir_all(session_dir)
-        .map_err(|e| format!("Failed to delete Kimi Code session {}: {e}", session_dir.display()))?;
+    std::fs::remove_dir_all(session_dir).map_err(|e| {
+        format!(
+            "Failed to delete Kimi Code session {}: {e}",
+            session_dir.display()
+        )
+    })?;
     Ok(true)
 }
 
 pub fn load_messages(path: &Path) -> Result<Vec<SessionMessage>, String> {
-    let file =
-        File::open(path).map_err(|e| format!("Failed to open Kimi Code wire log: {e}"))?;
+    let file = File::open(path).map_err(|e| format!("Failed to open Kimi Code wire log: {e}"))?;
     let reader = BufReader::new(file);
     let mut messages = Vec::new();
 

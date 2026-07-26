@@ -21,8 +21,7 @@ export function useKimiCodeLiveProviderIds(enabled: boolean) {
 export function useKimiCodeDefaultProviderId(enabled: boolean) {
   return useQuery({
     queryKey: kimiCodeKeys.defaultProviderId,
-    queryFn: () =>
-      invoke<string | null>("get_kimicode_default_provider_id"),
+    queryFn: () => invoke<string | null>("get_kimicode_default_provider_id"),
     enabled,
   });
 }

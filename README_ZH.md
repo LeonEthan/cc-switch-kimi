@@ -2,8 +2,8 @@
 
 # CC Switch · Kimi Code 分支
 
-### 在官方 CC Switch 之上增加一等公民 **Kimi Code CLI** 支持的社区分支  
-*（Claude Code · Claude Desktop · Codex · Gemini CLI · Grok Build · OpenCode · OpenClaw · Hermes · **Kimi Code**）*
+### 在官方 CC Switch 之上增加一等公民 **Kimi Code CLI** 与 **Pi** 支持的社区分支  
+*（Claude Code · Claude Desktop · Codex · Gemini CLI · Grok Build · OpenCode · OpenClaw · Hermes · **Kimi Code** · **Pi**）*
 
 [![GitHub](https://img.shields.io/badge/repo-LeonEthan%2Fcc--switch--kimi-blue)](https://github.com/LeonEthan/cc-switch-kimi)
 [![Upstream](https://img.shields.io/badge/upstream-farion1231%2Fcc--switch-lightgrey)](https://github.com/farion1231/cc-switch)
@@ -17,7 +17,7 @@
 > [!IMPORTANT]
 > **这是社区分支，不是官方 CC Switch 产品。**  
 > - 官方应用 / 官网 / 已公证安装包：**[ccswitch.io](https://ccswitch.io)** · [farion1231/cc-switch](https://github.com/farion1231/cc-switch)  
-> - **本仓库**在官方能力之上，将 **Kimi Code** 作为可管理应用（供应商、MCP、Skills、会话、用量导入、About 中的 CLI 安装/更新）。  
+> - **本仓库**在官方能力之上，将 **Kimi Code**（供应商、MCP、Skills、会话、用量导入、About 中的 CLI 安装/更新）与 **Pi**（供应商、会话、用量导入、本地 Proxy 接管——OAuth 仍由 Pi 自己持有）作为可管理应用。  
 > - 若要保留上述能力，**请勿**用官方 Homebrew（`brew install --cask cc-switch`）或**应用内自动更新**安装/覆盖——那些渠道发布的是**上游**包，**不含** Kimi Code 集成。  
 > - 与官方共用数据目录 `~/.cc-switch/`。使用本分支自构建包时，请**关闭应用内自动更新**。  
 > 完整说明见 **[docs/FORK.md](docs/FORK.md)**。
@@ -200,12 +200,13 @@ TeamoRouter 还提供企业级功能，包括集中账单、团队管理、BYOK�
 
 ## 为什么选这个分支？
 
-本分支保留 **上游 CC Switch** 的完整能力，并增加 **Kimi Code CLI** 作为一等管理应用（累加配置写入 `~/.kimi-code`，不做本地 Proxy 接管）。**不需要** Kimi Code 时请用[官方版](https://ccswitch.io)；**需要** 时请用本仓库。
+本分支保留 **上游 CC Switch** 的完整能力，并增加 **Kimi Code CLI**（累加配置写入 `~/.kimi-code`，不做本地 Proxy 接管）与 **Pi 编程 agent**（累加配置写入 `~/.pi/agent`，**支持**本地 Proxy 接管）作为一等管理应用。**不需要**这些能力时请用[官方版](https://ccswitch.io)；**需要** 时请用本仓库。
 
 上游价值不变：用一个桌面应用管理 Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw、Hermes，避免手改 JSON/TOML/`.env`，统一 MCP / Skills、托盘切换，SQLite 原子写入。
 
-- **一个应用，九个工具（本分支）** — 上游八个，加上 **Kimi Code**
+- **一个应用，十个工具（本分支）** — 上游八个，加上 **Kimi Code** 与 **Pi**
 - **Kimi Code** — 供应商、MCP/Skills、会话管理、从 `wire.jsonl` 导入 Usage、About 中 CLI 安装/更新（`kimi`）
+- **Pi** — 管理 `~/.pi/agent/models.json` 供应商、会话管理、会话用量导入，以及完整本地 Proxy 接管（`/pi` 路由）与故障转移；OAuth token 始终由 Pi 自己持有（CC Switch 绝不复制）
 - **告别手动编辑** — 50+ 供应商预设，包括 AWS Bedrock、NVIDIA NIM 和社区中转服务；一键即可切换
 - **统一 MCP / Skills 管理** — Claude、Codex、Gemini、Grok Build、OpenCode、Hermes 与 **Kimi Code** 双向同步
 - **系统托盘快速切换** — 从托盘菜单即时切换供应商，无需打开完整应用
@@ -227,15 +228,16 @@ TeamoRouter 还提供企业级功能，包括集中账单、团队管理、BYOK�
 
 ### 供应商管理
 
-- **9 个支持工具（本分支），50+ 预设** — Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw、Hermes、**Kimi Code**；复制 key 即可一键导入
+- **10 个支持工具（本分支），50+ 预设** — Claude Code、Claude Desktop、Codex、Gemini CLI、Grok Build、OpenCode、OpenClaw、Hermes、**Kimi Code**、**Pi**；复制 key 即可一键导入
 - **通用供应商** — 一份配置同步到 Claude Code、Codex 和 Gemini CLI
 - **Kimi Code** — 累加模式写入 `~/.kimi-code/config.toml`（与 Hermes / OpenCode 同类）
+- **Pi** — 累加模式写入 `~/.pi/agent/models.json`（与现有 Pi 配置共存；OAuth 仍由 Pi 自己持有）
 - 一键切换、系统托盘快速访问、拖拽排序、导入导出
 
 ### 代理与故障转移
 
 - **本地代理热切换** — 格式转换、自动故障转移、熔断器、供应商健康监控和整流器
-- **应用级代理接管** — 独立为 Claude、Codex、Gemini 或 Grok Build 配置代理，具体到单个供应商
+- **应用级代理接管** — 独立为 Claude、Codex、Gemini、Grok Build 或 **Pi** 配置代理，具体到单个供应商
 - **Kimi Code / Hermes / OpenCode** — 本分支不做本地 Proxy 接管（仅管理 live 配置）
 
 ### MCP、Prompts 与 Skills
@@ -248,10 +250,11 @@ TeamoRouter 还提供企业级功能，包括集中账单、团队管理、BYOK�
 
 - **用量仪表盘** — 跨供应商追踪支出、请求数和 Token 用量，趋势图表、详细请求日志和自定义模型定价
 - **Kimi Code 会话** — 同步时从 `~/.kimi-code` 会话日志导入 turn 级用量（数据源 `kimicode_session`）
+- **Pi 会话** — 同步时从 `~/.pi/agent` 会话日志导入逐请求用量（数据源 `pi_session`），与代理行自动去重
 
 ### 会话管理器与工作区
 
-- 浏览、搜索和恢复支持的会话来源（含 **Kimi Code** 的 `wire.jsonl`）
+- 浏览、搜索和恢复支持的会话来源（含 **Kimi Code** 的 `wire.jsonl` 与 **Pi** 会话日志）
 - **工作区编辑器**（OpenClaw）— 编辑 Agent 文件（AGENTS.md、SOUL.md 等），支持 Markdown 预览
 
 ### 系统与平台
@@ -265,14 +268,14 @@ TeamoRouter 还提供企业级功能，包括集中账单、团队管理、BYOK�
 <details>
 <summary><strong>本分支支持哪些 AI 工具？</strong></summary>
 
-**本分支**支持九个工具：**Claude Code**、**Claude Desktop**、**Codex**、**Gemini CLI**、**Grok Build**、**OpenCode**、**OpenClaw**、**Hermes** 和 **Kimi Code**。每个工具都有专属的供应商预设和配置管理。官方上游当前为八个（不含 Kimi Code）。详见 [docs/FORK.md](docs/FORK.md)。
+**本分支**支持十个工具：**Claude Code**、**Claude Desktop**、**Codex**、**Gemini CLI**、**Grok Build**、**OpenCode**、**OpenClaw**、**Hermes**、**Kimi Code** 和 **Pi**。每个工具都有专属的供应商预设和配置管理。官方上游当前为八个（不含 Kimi Code 与 Pi）。详见 [docs/FORK.md](docs/FORK.md)。
 
 </details>
 
 <details>
 <summary><strong>这是官方 CC Switch 吗？</strong></summary>
 
-**不是。** 官方产品：[ccswitch.io](https://ccswitch.io) / [farion1231/cc-switch](https://github.com/farion1231/cc-switch)。本仓库（`LeonEthan/cc-switch-kimi`）是面向 **Kimi Code** 集成的社区分支。默认仍使用 `~/.cc-switch/` 数据目录；运行自构建包时请关闭自动更新。
+**不是。** 官方产品：[ccswitch.io](https://ccswitch.io) / [farion1231/cc-switch](https://github.com/farion1231/cc-switch)。本仓库（`LeonEthan/cc-switch-kimi`）是面向 **Kimi Code** 与 **Pi** 集成的社区分支。默认仍使用 `~/.cc-switch/` 数据目录；运行自构建包时请关闭自动更新。
 
 </details>
 
@@ -359,8 +362,8 @@ CC_SWITCH_GDK_BACKEND=wayland ./CC-Switch-*.AppImage
 - **MCP**：点击"MCP"按钮 → 通过模板或自定义配置添加服务器 → 切换各应用同步开关（含 Kimi Code）
 - **Prompts**：点击"Prompts" → 使用 Markdown 编辑器创建预设 → 激活后同步到 live 文件
 - **Skills**：点击"Skills" → 浏览 GitHub 仓库 → 一键安装到支持的应用
-- **会话**：点击"Sessions" → 浏览、搜索和恢复支持的会话来源（含 Kimi Code）
-- **用量**：Usage 页点击同步，可导入 Kimi Code 会话 token 用量
+- **会话**：点击"Sessions" → 浏览、搜索和恢复支持的会话来源（含 Kimi Code 与 Pi）
+- **用量**：Usage 页点击同步，可导入 Kimi Code 与 Pi 会话 token 用量
 
 > **注意**：首次启动可以手动导入现有 CLI 工具配置作为默认供应商。使用本分支自构建包时请关闭应用内自动更新（见 [docs/FORK.md](docs/FORK.md)）。
 

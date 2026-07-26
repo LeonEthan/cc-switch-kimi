@@ -218,6 +218,20 @@ export const providersApi = {
   async importKimiCodeFromLive(): Promise<number> {
     return await invoke("import_kimicode_providers_from_live");
   },
+
+  /**
+   * 获取 Pi live 配置（models.json）中的供应商 ID 列表
+   */
+  async getPiLiveProviderIds(): Promise<string[]> {
+    return await invoke("getPiLiveProviderIds");
+  },
+
+  /**
+   * 从 Pi live 配置导入供应商到数据库
+   */
+  async importPiFromLive(): Promise<number> {
+    return await invoke("importPiProvidersFromLive");
+  },
 };
 
 // ============================================================================

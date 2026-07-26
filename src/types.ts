@@ -285,6 +285,7 @@ export interface VisibleApps {
   openclaw: boolean;
   hermes: boolean;
   kimicode: boolean;
+  pi: boolean;
 }
 
 // WebDAV 同步状态
@@ -406,6 +407,8 @@ export interface Settings {
   hermesConfigDir?: string;
   // 覆盖 Kimi Code 配置目录（可选）
   kimiCodeConfigDir?: string;
+  // 覆盖 Pi 配置目录（可选）
+  piConfigDir?: string;
 
   // ===== 当前供应商 ID（设备级）=====
   // 当前 Claude 供应商 ID（优先于数据库 is_current）
@@ -499,6 +502,8 @@ export interface McpApps {
   openclaw: boolean;
   hermes: boolean;
   kimicode?: boolean;
+  // Pi 无原生 MCP（仅扩展），仅用于面板索引的占位，后端不存储。
+  pi?: boolean;
 }
 
 // MCP 服务器条目（v3.7.0 统一结构）

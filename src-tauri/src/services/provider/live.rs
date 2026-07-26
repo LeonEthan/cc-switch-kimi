@@ -163,6 +163,25 @@ fn apply_kimi_for_coding_context_defaults(settings: &mut Value, provider: &Provi
     }
 }
 
+/// App types where the "common config" snippet is not a thing — i.e. they
+/// have no fields shaped like Claude's `env` / Codex's `config` TOML /
+/// Gemini's `env` block. Used as the terminal arm of three sibling match
+/// expressions (`settings_contain_common_config`,
+/// `remove_common_config_from_settings`, `apply_common_config_to_settings`)
+/// to keep the cascade list in one place.
+fn app_type_ignores_common_config_snippet(app_type: &AppType) -> bool {
+    matches!(
+        app_type,
+        AppType::GrokBuild
+            | AppType::OpenCode
+            | AppType::OpenClaw
+            | AppType::Hermes
+            | AppType::KimiCode
+            | AppType::Pi
+            | AppType::ClaudeDesktop
+    )
+}
+
 pub(crate) fn sanitize_claude_settings_for_live(settings: &Value) -> Value {
     let mut v = settings.clone();
     if let Some(obj) = v.as_object_mut() {
@@ -188,6 +207,9 @@ pub(crate) fn provider_exists_in_live_config(
             .map(|providers| providers.contains_key(provider_id)),
         AppType::KimiCode => crate::kimi_code_config::get_providers()
             .map(|providers| providers.contains_key(provider_id)),
+        AppType::Pi => {
+            crate::pi_config::get_providers().map(|providers| providers.contains_key(provider_id))
+        }
         _ => Ok(false),
     }
 }
@@ -490,6 +512,9 @@ fn settings_contain_common_config(app_type: &AppType, settings: &Value, snippet:
         return false;
     }
 
+    if app_type_ignores_common_config_snippet(app_type) {
+        return false;
+    }
     match app_type {
         AppType::Claude => match serde_json::from_str::<Value>(trimmed) {
             Ok(source) if source.is_object() => json_is_subset(settings, &source),
@@ -525,11 +550,11 @@ fn settings_contain_common_config(app_type: &AppType, settings: &Value, snippet:
             }
             _ => false,
         },
-        AppType::GrokBuild
-        | AppType::OpenCode
-        | AppType::OpenClaw
-        | AppType::Hermes | AppType::KimiCode
-        | AppType::ClaudeDesktop => false,
+        // Non-exhaustive marker: Claude/Codex/Gemini matched above; the
+        // non-Claude/Codex/Gemini apps were short-circuited via the guard.
+        // Future AppType variants that DO have env-style common config must
+        // be added here AND to `app_type_ignores_common_config_snippet`.
+        _ => false,
     }
 }
 
@@ -599,11 +624,13 @@ pub(crate) fn remove_common_config_from_settings(
             }
             Ok(result)
         }
-        AppType::GrokBuild
-        | AppType::OpenCode
+        AppType::ClaudeDesktop
+        | AppType::GrokBuild
+        | AppType::Hermes
+        | AppType::KimiCode
         | AppType::OpenClaw
-        | AppType::Hermes | AppType::KimiCode
-        | AppType::ClaudeDesktop => Ok(settings.clone()),
+        | AppType::OpenCode
+        | AppType::Pi => Ok(settings.clone()),
     }
 }
 
@@ -612,6 +639,9 @@ fn apply_common_config_to_settings(
     settings: &Value,
     snippet: &str,
 ) -> Result<Value, AppError> {
+    if app_type_ignores_common_config_snippet(app_type) {
+        return Ok(settings.clone());
+    }
     let trimmed = snippet.trim();
     if trimmed.is_empty() {
         return Ok(settings.clone());
@@ -658,11 +688,11 @@ fn apply_common_config_to_settings(
             }
             Ok(result)
         }
-        AppType::GrokBuild
-        | AppType::OpenCode
-        | AppType::OpenClaw
-        | AppType::Hermes | AppType::KimiCode
-        | AppType::ClaudeDesktop => Ok(settings.clone()),
+        // Non-exhaustive: the guard at the top short-circuits the
+        // non-Claude/Codex/Gemini apps. New AppType variants that DO have
+        // env-style common config must be handled here AND
+        // `app_type_ignores_common_config_snippet` must be updated.
+        _ => Ok(settings.clone()),
     }
 }
 
@@ -1166,7 +1196,14 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
         }
         AppType::KimiCode => {
             crate::kimi_code_config::set_provider(&provider.id, provider.settings_config.clone())?;
-            log::debug!("Kimi Code provider '{}' written to live config", provider.id);
+            log::debug!(
+                "Kimi Code provider '{}' written to live config",
+                provider.id
+            );
+        }
+        AppType::Pi => {
+            crate::pi_config::set_provider(&provider.id, provider.settings_config.clone())?;
+            log::debug!("Pi provider '{}' written to live config", provider.id);
         }
     }
     Ok(())
@@ -1177,6 +1214,25 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
 /// Writes all providers from the database to the live configuration file.
 /// Used for OpenCode and other additive mode applications.
 fn sync_all_providers_to_live(state: &AppState, app_type: &AppType) -> Result<(), AppError> {
+    // Pi under proxy takeover: the live file is proxy-owned (entries rewritten
+    // to the local proxy URL). Bulk-syncing DB providers here would clobber the
+    // takeover fields; the restore backup is the source of truth until takeover
+    // ends.
+    if matches!(app_type, AppType::Pi) {
+        let has_live_backup =
+            futures::executor::block_on(state.db.get_live_backup(app_type.as_str()))
+                .ok()
+                .flatten()
+                .is_some();
+        let live_taken_over = state
+            .proxy_service
+            .detect_takeover_in_live_config_for_app(app_type);
+        if has_live_backup || live_taken_over {
+            log::info!("Pi 处于代理接管状态，跳过批量同步 live（恢复备份为准）");
+            return Ok(());
+        }
+    }
+
     let providers = state.db.get_all_providers(app_type.as_str())?;
     let mut synced_count = 0usize;
 
@@ -1434,6 +1490,18 @@ pub fn read_live_settings(app_type: AppType) -> Result<Value, AppError> {
             }
             crate::kimi_code_config::read_live_settings()
         }
+        AppType::Pi => {
+            let settings_path = crate::pi_config::get_pi_settings_path();
+            let models_path = crate::pi_config::get_pi_models_path();
+            if !settings_path.exists() && !models_path.exists() {
+                return Err(AppError::localized(
+                    "pi.config.missing",
+                    "Pi 配置文件不存在",
+                    "Pi configuration file not found",
+                ));
+            }
+            crate::pi_config::read_live_settings()
+        }
     }
 }
 
@@ -1543,7 +1611,11 @@ pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool
             })
         }
         // OpenCode, OpenClaw and Hermes use additive mode and are handled by early return above
-        AppType::OpenCode | AppType::OpenClaw | AppType::Hermes | AppType::KimiCode => {
+        AppType::OpenCode
+        | AppType::OpenClaw
+        | AppType::Hermes
+        | AppType::KimiCode
+        | AppType::Pi => {
             unreachable!("additive mode apps are handled by early return")
         }
     };
@@ -1754,6 +1826,18 @@ pub(crate) fn remove_additive_provider_from_live(
             }
             kimi_code_config::remove_provider(provider_id)?;
             log::info!("Kimi Code provider '{provider_id}' removed from live config");
+            Ok(())
+        }
+        AppType::Pi => {
+            use crate::pi_config;
+            if !pi_config::get_pi_dir().exists() {
+                log::debug!(
+                    "Pi config directory doesn't exist, skipping removal of '{provider_id}'"
+                );
+                return Ok(());
+            }
+            pi_config::remove_provider(provider_id)?;
+            log::info!("Pi provider '{provider_id}' removed from live config");
             Ok(())
         }
         _ => Ok(()),
@@ -2013,12 +2097,9 @@ pub fn import_hermes_providers_from_live(state: &AppState) -> Result<usize, AppE
 pub fn import_kimicode_providers_from_live(state: &AppState) -> Result<usize, AppError> {
     use crate::kimi_code_config;
     let providers = kimi_code_config::get_providers()?;
-    let count = import_additive_map_providers_from_live(
-        state,
-        "kimicode",
-        providers,
-        |name| kimi_code_config::is_managed_provider_id(name),
-    )?;
+    let count = import_additive_map_providers_from_live(state, "kimicode", providers, |name| {
+        kimi_code_config::is_managed_provider_id(name)
+    })?;
     // Stamp managed imports with the kimi icon for the UI.
     if count > 0 {
         if let Ok(all) = state.db.get_all_providers("kimicode") {
@@ -2043,6 +2124,25 @@ pub fn remove_hermes_provider_from_live(provider_id: &str) -> Result<(), AppErro
 #[allow(dead_code)]
 pub fn remove_kimicode_provider_from_live(provider_id: &str) -> Result<(), AppError> {
     remove_additive_provider_from_live(&AppType::KimiCode, provider_id)
+}
+
+/// Import all providers from Pi live config to database.
+///
+/// Managed ("managed:"-prefixed) and OAuth-credential providers are imported
+/// read-only: Pi owns their credentials (OAuth entries never carry an apiKey
+/// into the DB — `pi_config::get_providers` already strips them).
+pub fn import_pi_providers_from_live(state: &AppState) -> Result<usize, AppError> {
+    use crate::pi_config;
+    let providers = pi_config::get_providers()?;
+    import_additive_map_providers_from_live(state, "pi", providers, |name| {
+        pi_config::is_managed_provider_id(name) || pi_config::provider_has_oauth_credential(name)
+    })
+}
+
+/// Remove a Pi provider from live config (compat wrapper).
+#[allow(dead_code)]
+pub fn remove_pi_provider_from_live(provider_id: &str) -> Result<(), AppError> {
+    remove_additive_provider_from_live(&AppType::Pi, provider_id)
 }
 
 /// Remove an OpenClaw provider from live config (compat wrapper).

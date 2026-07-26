@@ -354,6 +354,21 @@ impl ProxyServer {
                 "/grokbuild/v1/responses/compact",
                 post(handlers::handle_grokbuild_responses_compact),
             )
+            // Pi CLI: Anthropic Messages + OpenAI Chat Completions 两种协议
+            // 各自独立命名空间路由，不做跨协议转换（供应商按协议过滤）。
+            // 接管地址统一为 `{origin}/pi`：anthropic-messages 客户端会请求
+            // /pi/v1/messages，openai-completions 客户端会请求
+            // /pi/chat/completions；/pi/v1/chat/completions 兼容手动把
+            // baseUrl 配成 `{origin}/pi/v1` 的用法。
+            .route("/pi/v1/messages", post(handlers::handle_pi_messages))
+            .route(
+                "/pi/chat/completions",
+                post(handlers::handle_pi_chat_completions),
+            )
+            .route(
+                "/pi/v1/chat/completions",
+                post(handlers::handle_pi_chat_completions),
+            )
             // Gemini API (支持带前缀和不带前缀)
             //
             // 用 `any(..)` 覆盖所有 HTTP 方法：除了 POST `:generateContent` /

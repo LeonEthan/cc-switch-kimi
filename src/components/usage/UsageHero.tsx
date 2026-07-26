@@ -73,6 +73,10 @@ const TITLE_THEMES: Record<AppType | "all", TitleTheme> = {
     accent: "text-sky-700 dark:text-sky-300",
     iconBg: "bg-sky-500/10",
   },
+  pi: {
+    accent: "text-teal-600 dark:text-teal-400",
+    iconBg: "bg-teal-500/10",
+  },
 };
 
 /**

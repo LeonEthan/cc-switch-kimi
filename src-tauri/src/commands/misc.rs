@@ -111,15 +111,8 @@ pub struct ToolVersion {
     wsl_distro: Option<String>,
 }
 
-const VALID_TOOLS: [&str; 8] = [
-    "claude",
-    "codex",
-    "gemini",
-    "grok",
-    "opencode",
-    "openclaw",
-    "hermes",
-    "kimicode",
+const VALID_TOOLS: [&str; 9] = [
+    "claude", "codex", "gemini", "grok", "opencode", "openclaw", "hermes", "kimicode", "pi",
 ];
 
 /// CLI 可执行文件名。App/tool id 与二进制名可能不同（如 kimicode → kimi）。
@@ -444,6 +437,7 @@ fn tool_display_name(tool: &str) -> &'static str {
         "openclaw" => "OpenClaw",
         "hermes" => "Hermes",
         "kimicode" => "Kimi Code",
+        "pi" => "Pi",
         _ => "Unknown",
     }
 }
@@ -540,6 +534,7 @@ fn npm_install_command_for(tool: &str) -> Option<&'static str> {
         "opencode" => Some("npm i -g opencode-ai@latest"),
         "openclaw" => Some("npm i -g openclaw@latest"),
         "kimicode" => Some("npm i -g @moonshot-ai/kimi-code@latest"),
+        "pi" => Some("npm i -g @earendil-works/pi-coding-agent@latest"),
         _ => None,
     }
 }
@@ -857,6 +852,9 @@ async fn get_single_tool_version_impl(
             } else {
                 fetch_github_latest_version(&client, "MoonshotAI/kimi-code").await
             }
+        }
+        "pi" => {
+            fetch_npm_latest_for_tool(&client, "@earendil-works/pi-coding-agent", tool, local).await
         }
         _ => None,
     };
@@ -2077,6 +2075,7 @@ fn npm_package_for(tool: &str) -> Option<&'static str> {
         "opencode" => Some("opencode-ai"),
         "openclaw" => Some("openclaw"),
         "kimicode" => Some("@moonshot-ai/kimi-code"),
+        "pi" => Some("@earendil-works/pi-coding-agent"),
         _ => None,
     }
 }
@@ -2731,6 +2730,7 @@ fn wsl_distro_for_tool(tool: &str) -> Option<String> {
         "openclaw" => crate::settings::get_openclaw_override_dir(),
         "hermes" => crate::settings::get_hermes_override_dir(),
         "kimicode" => crate::settings::get_kimi_code_override_dir(),
+        "pi" => crate::settings::get_pi_override_dir(),
         _ => None,
     }?;
 

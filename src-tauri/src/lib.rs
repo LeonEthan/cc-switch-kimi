@@ -26,6 +26,7 @@ mod model_capabilities;
 mod openclaw_config;
 mod opencode_config;
 mod panic_hook;
+mod pi_config;
 mod prompt;
 mod prompt_files;
 mod provider;
@@ -836,6 +837,13 @@ pub fn run() {
                 Ok(_) => log::debug!("○ No Kimi Code provider changes from live config"),
                 Err(e) => log::warn!("✗ Failed to import Kimi Code providers: {e}"),
             }
+            match crate::services::provider::import_pi_providers_from_live(&app_state) {
+                Ok(count) if count > 0 => {
+                    log::info!("✓ Synced {count} Pi provider(s) from live config");
+                }
+                Ok(_) => log::debug!("○ No Pi provider changes from live config"),
+                Err(e) => log::warn!("✗ Failed to import Pi providers: {e}"),
+            }
 
             // 2. OMO 配置导入（当数据库中无 OMO provider 时，从本地文件导入）
             {
@@ -954,6 +962,7 @@ pub fn run() {
                     crate::app_config::AppType::OpenClaw,
                     crate::app_config::AppType::Hermes,
                     crate::app_config::AppType::KimiCode,
+                    crate::app_config::AppType::Pi,
                 ] {
                     match crate::services::prompt::PromptService::import_from_file_on_first_launch(
                         &app_state,
@@ -1592,6 +1601,13 @@ pub fn run() {
             commands::get_kimicode_live_provider_ids,
             commands::get_kimicode_default_model,
             commands::get_kimicode_default_provider_id,
+            // Pi specific
+            commands::import_pi_providers_from_live,
+            commands::get_pi_live_provider_ids,
+            commands::get_pi_default_model,
+            commands::get_pi_default_provider_id,
+            commands::get_pi_version,
+            commands::get_pi_min_supported_version,
             // Global upstream proxy
             commands::get_global_proxy_url,
             commands::set_global_proxy_url,

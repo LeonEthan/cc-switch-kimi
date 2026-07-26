@@ -196,9 +196,7 @@ fn write_document(doc: &toml_edit::DocumentMut) -> Result<(), AppError> {
     Ok(())
 }
 
-fn ensure_table<'a>(
-    item: &'a mut toml_edit::Item,
-) -> Result<&'a mut toml_edit::Table, AppError> {
+fn ensure_table<'a>(item: &'a mut toml_edit::Item) -> Result<&'a mut toml_edit::Table, AppError> {
     if item.is_none() {
         *item = toml_edit::Item::Table(toml_edit::Table::new());
     }
@@ -249,10 +247,7 @@ fn table_u64(table: &toml_edit::Table, key: &str) -> Option<u64> {
     table.get(key).and_then(|item| {
         item.as_integer()
             .and_then(|n| u64::try_from(n).ok())
-            .or_else(|| {
-                item.as_str()
-                    .and_then(|s| s.trim().parse::<u64>().ok())
-            })
+            .or_else(|| item.as_str().and_then(|s| s.trim().parse::<u64>().ok()))
     })
 }
 
@@ -295,7 +290,8 @@ pub fn get_providers() -> Result<Map<String, Value>, AppError> {
             continue;
         };
 
-        let provider_type = table_string(provider_table, "type").unwrap_or_else(default_provider_type);
+        let provider_type =
+            table_string(provider_table, "type").unwrap_or_else(default_provider_type);
         let api_key = table_string(provider_table, "api_key");
         let base_url = table_string(provider_table, "base_url");
 
@@ -566,7 +562,9 @@ pub fn remove_provider(id: &str) -> Result<(), AppError> {
         return Err(AppError::localized(
             "provider.kimicode.managed.readonly",
             format!("托管供应商 '{id}' 由 Kimi Code OAuth 管理，无法删除"),
-            format!("Managed provider '{id}' is controlled by Kimi Code OAuth and cannot be removed"),
+            format!(
+                "Managed provider '{id}' is controlled by Kimi Code OAuth and cannot be removed"
+            ),
         ));
     }
 
@@ -803,10 +801,7 @@ mod tests {
             assert_eq!(acc["type"], "kimi");
             assert_eq!(acc["apiKey"], "sk-test");
             assert_eq!(get_default_model().unwrap().as_deref(), Some("acc-a/k3"));
-            assert_eq!(
-                get_default_provider_id().unwrap().as_deref(),
-                Some("acc-a")
-            );
+            assert_eq!(get_default_provider_id().unwrap().as_deref(), Some("acc-a"));
         });
     }
 

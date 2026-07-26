@@ -34,6 +34,7 @@ import {
   useKimiCodeLiveProviderIds,
   useKimiCodeDefaultProviderId,
 } from "@/hooks/useKimiCode";
+import { usePiLiveProviderIds, usePiDefaultProviderId } from "@/hooks/usePi";
 import { useStreamCheck } from "@/hooks/useStreamCheck";
 import { ProviderCard } from "@/components/providers/ProviderCard";
 import { ProviderEmptyState } from "@/components/providers/ProviderEmptyState";
@@ -128,6 +129,10 @@ export function ProviderList({
     appId === "kimicode",
   );
 
+  // Pi: live ids + defaultProvider owner for isInConfig / isCurrent
+  const { data: piLiveIds } = usePiLiveProviderIds(appId === "pi");
+  const { data: piCurrentProviderId } = usePiDefaultProviderId(appId === "pi");
+
   // 判断供应商是否已添加到配置（累加模式应用：OpenCode/OpenClaw/Hermes/KimiCode）
   const isProviderInConfig = useCallback(
     (providerId: string): boolean => {
@@ -143,9 +148,19 @@ export function ProviderList({
       if (appId === "kimicode") {
         return kimiCodeLiveIds?.includes(providerId) ?? false;
       }
+      if (appId === "pi") {
+        return piLiveIds?.includes(providerId) ?? false;
+      }
       return true; // 其他应用始终返回 true
     },
-    [appId, opencodeLiveIds, openclawLiveIds, hermesLiveIds, kimiCodeLiveIds],
+    [
+      appId,
+      opencodeLiveIds,
+      openclawLiveIds,
+      hermesLiveIds,
+      kimiCodeLiveIds,
+      piLiveIds,
+    ],
   );
 
   // OpenClaw: query default model to determine which provider is default
@@ -240,6 +255,10 @@ export function ProviderList({
       }
       if (appId === "kimicode") {
         const count = await providersApi.importKimiCodeFromLive();
+        return count > 0;
+      }
+      if (appId === "pi") {
+        const count = await providersApi.importPiFromLive();
         return count > 0;
       }
       if (appId === "claude-desktop") {
@@ -413,8 +432,9 @@ export function ProviderList({
             const isHermesCurrent =
               appId === "hermes" && hermesCurrentProviderId === provider.id;
             const isKimiCodeCurrent =
-              appId === "kimicode" &&
-              kimiCodeCurrentProviderId === provider.id;
+              appId === "kimicode" && kimiCodeCurrentProviderId === provider.id;
+            const isPiCurrent =
+              appId === "pi" && piCurrentProviderId === provider.id;
             return (
               <SortableProviderCard
                 key={provider.id}
@@ -428,7 +448,9 @@ export function ProviderList({
                         ? isHermesCurrent
                         : appId === "kimicode"
                           ? isKimiCodeCurrent
-                          : provider.id === currentProviderId
+                          : appId === "pi"
+                            ? isPiCurrent
+                            : provider.id === currentProviderId
                 }
                 appId={appId}
                 isInConfig={isProviderInConfig(provider.id)}
@@ -461,7 +483,9 @@ export function ProviderList({
                     ? isHermesCurrent
                     : appId === "kimicode"
                       ? isKimiCodeCurrent
-                      : isProviderDefaultModel(provider.id)
+                      : appId === "pi"
+                        ? isPiCurrent
+                        : isProviderDefaultModel(provider.id)
                 }
                 onSetAsDefault={
                   onSetAsDefault ? () => onSetAsDefault(provider) : undefined

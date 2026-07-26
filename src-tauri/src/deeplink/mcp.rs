@@ -175,6 +175,10 @@ pub(crate) fn parse_mcp_apps(apps_str: &str) -> Result<McpApps, AppError> {
             }
             "hermes" => apps.hermes = true,
             "kimicode" | "kimi-code" | "kimi" => apps.kimicode = true,
+            "pi" => {
+                // Pi has no native MCP support (extensions only), ignore silently
+                log::debug!("Pi doesn't support MCP, ignoring in apps parameter");
+            }
             other => {
                 return Err(AppError::InvalidInput(format!(
                     "Invalid app in 'apps': {other}"

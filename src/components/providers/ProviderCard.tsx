@@ -7,6 +7,7 @@ import type {
 } from "@dnd-kit/core";
 import type { Provider } from "@/types";
 import type { AppId } from "@/lib/api";
+import { isAdditiveApp } from "@/lib/api/additiveApps";
 import { cn } from "@/lib/utils";
 import { ProviderActions } from "@/components/providers/ProviderActions";
 import { ProviderIcon } from "@/components/ProviderIcon";
@@ -18,6 +19,7 @@ import XaiOauthQuotaFooter from "@/components/XaiOauthQuotaFooter";
 import { PROVIDER_TYPES, TEMPLATE_TYPES } from "@/config/constants";
 import { isHermesReadOnlyProvider } from "@/config/hermesProviderPresets";
 import { isKimiCodeManagedProvider } from "@/config/kimiCodeProviderPresets";
+import { isPiManagedProvider } from "@/config/piProviderPresets";
 import { ProviderHealthBadge } from "@/components/providers/ProviderHealthBadge";
 import { FailoverPriorityBadge } from "@/components/providers/FailoverPriorityBadge";
 import {
@@ -230,7 +232,12 @@ export function ProviderCard({
   const isKimiCodeReadOnly =
     appId === "kimicode" &&
     isKimiCodeManagedProvider(provider.id, provider.settingsConfig);
-  const isReadOnlyProvider = isHermesReadOnly || isKimiCodeReadOnly;
+  // Pi-owned entries (managed:* or OAuth-backed): credentials live in Pi's
+  // auth.json and are never written by CC Switch.
+  const isPiReadOnly =
+    appId === "pi" && isPiManagedProvider(provider.id, provider.settingsConfig);
+  const isReadOnlyProvider =
+    isHermesReadOnly || isKimiCodeReadOnly || isPiReadOnly;
   const isCodexOauth =
     provider.meta?.providerType === PROVIDER_TYPES.CODEX_OAUTH;
   // xAI OAuth (SuperGrok 反代)：额度经自管 OAuth token 自动显示，与 codex_oauth 同构
@@ -240,14 +247,11 @@ export function ProviderCard({
   const codexNeedsRouting =
     appId === "codex" && providerNeedsRouting(appId, provider);
   // 获取用量数据以判断是否有多套餐
-  // 累加模式应用（OpenCode/OpenClaw/Hermes）：使用 isInConfig 代替 isCurrent
-  const shouldAutoQuery =
-    appId === "opencode" ||
-    appId === "openclaw" ||
-    appId === "hermes" ||
-    appId === "kimicode"
-      ? isInConfig
-      : isCurrent;
+  // Additive apps (mirrors `AppType::is_additive_mode` on the backend):
+  // use `isInConfig` instead of `isCurrent` to drive auto-query, since the
+  // "current" selection can move to any provider on demand without dropping
+  // the others from the live config.
+  const shouldAutoQuery = isAdditiveApp(appId) ? isInConfig : isCurrent;
   const autoQueryInterval = shouldAutoQuery
     ? provider.meta?.usage_script?.autoQueryInterval || 0
     : 0;
@@ -294,7 +298,12 @@ export function ProviderCard({
           : isCurrent;
 
   const shouldUseGreen = !isAnyOmo && isProxyTakeover && isActiveProvider;
-  const hasPersistentConfigHighlight = isAdditiveMode && isInConfig;
+  // Pi providers always coexist in `models.json`; `isInConfig` highlights
+  // ones CC Switch knows about, regardless of which one is the current
+  // selection in `settings.json`. Distinct from OpenCode's "additive" main
+  // button (In use / Enable never Remove — see ADR #1).
+  const hasPersistentConfigHighlight =
+    (isAdditiveMode || appId === "pi" || appId === "kimicode") && isInConfig;
   const shouldUseBlue =
     (isAnyOmo && isActiveProvider) ||
     (!isAnyOmo &&
@@ -471,14 +480,17 @@ export function ProviderCard({
               {isKimiCodeReadOnly && (
                 <span
                   className="inline-flex items-center rounded-md bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 dark:bg-slate-700/60 dark:text-slate-200"
-                  title={t("provider.managedByKimiCodeHint", {
-                    defaultValue:
-                      "由 Kimi Code OAuth 管理，请在 CLI 中使用 /login",
-                  })}
+                  title={t("provider.managedByKimiCodeHint")}
                 >
-                  {t("provider.managedByKimiCode", {
-                    defaultValue: "Kimi Managed",
-                  })}
+                  {t("provider.managedByKimiCode")}
+                </span>
+              )}
+              {isPiReadOnly && (
+                <span
+                  className="inline-flex items-center rounded-md bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 dark:bg-slate-700/60 dark:text-slate-200"
+                  title={t("provider.managedByPiHint")}
+                >
+                  {t("provider.managedByPi")}
                 </span>
               )}
             </div>

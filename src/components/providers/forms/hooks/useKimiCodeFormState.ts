@@ -29,8 +29,9 @@ function parseField<T>(
       return (value as T) ?? fallback;
     }
     return (
-      ((KIMICODE_DEFAULT_CONFIG as Record<string, unknown>)[field] as T) ??
-      fallback
+      ((KIMICODE_DEFAULT_CONFIG as unknown as Record<string, unknown>)[
+        field
+      ] as T) ?? fallback
     );
   } catch {
     return fallback;

@@ -389,7 +389,13 @@ mod tests {
     use std::io::Write;
     use tempfile::tempdir;
 
-    fn sample_turn_line(time_ms: i64, model: &str, input: u32, output: u32, cache_read: u32) -> String {
+    fn sample_turn_line(
+        time_ms: i64,
+        model: &str,
+        input: u32,
+        output: u32,
+        cache_read: u32,
+    ) -> String {
         format!(
             r#"{{"type":"usage.record","model":"{model}","usage":{{"inputOther":{input},"output":{output},"inputCacheRead":{cache_read},"inputCacheCreation":0}},"usageScope":"turn","time":{time_ms}}}"#
         )
@@ -439,7 +445,13 @@ mod tests {
             writeln!(
                 f,
                 "{}",
-                sample_turn_line(1_700_000_000_000, "kimi-code/kimi-for-coding", 11260, 33, 13824)
+                sample_turn_line(
+                    1_700_000_000_000,
+                    "kimi-code/kimi-for-coding",
+                    11260,
+                    33,
+                    13824
+                )
             )
             .unwrap();
             writeln!(
@@ -472,7 +484,13 @@ mod tests {
             writeln!(
                 f,
                 "{}",
-                sample_turn_line(1_700_000_000_000, "kimi-code/kimi-for-coding", 11260, 33, 13824)
+                sample_turn_line(
+                    1_700_000_000_000,
+                    "kimi-code/kimi-for-coding",
+                    11260,
+                    33,
+                    13824
+                )
             )
             .unwrap();
             writeln!(

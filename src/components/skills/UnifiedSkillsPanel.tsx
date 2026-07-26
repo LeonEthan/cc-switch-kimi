@@ -114,7 +114,7 @@ const UnifiedSkillsPanel = React.forwardRef<
   }, [skillUpdates]);
 
   const enabledCounts = useMemo(() => {
-    const counts = {
+    const counts: Record<AppId, number> = {
       claude: 0,
       "claude-desktop": 0,
       codex: 0,
@@ -123,6 +123,8 @@ const UnifiedSkillsPanel = React.forwardRef<
       opencode: 0,
       openclaw: 0,
       hermes: 0,
+      kimicode: 0,
+      pi: 0,
     };
     if (!skills) return counts;
     skills.forEach((skill) => {

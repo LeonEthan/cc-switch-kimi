@@ -153,6 +153,7 @@ pub(crate) fn build_provider_from_request(
         AppType::OpenClaw => build_additive_app_settings(request),
         AppType::Hermes => build_hermes_settings(request),
         AppType::KimiCode => build_kimicode_settings(request),
+        AppType::Pi => build_pi_settings(request),
     };
 
     // Build usage script configuration if provided
@@ -583,10 +584,7 @@ fn build_kimicode_settings(request: &DeepLinkImportRequest) -> serde_json::Value
         // No endpoint in the link: fall back to the official Kimi For Coding
         // endpoint, whose default protocol is Anthropic-compatible.
         config.insert("type".to_string(), json!("anthropic"));
-        config.insert(
-            "baseUrl".to_string(),
-            json!("https://api.kimi.com/coding/"),
-        );
+        config.insert("baseUrl".to_string(), json!("https://api.kimi.com/coding/"));
     } else {
         // Explicit third-party endpoint: assume OpenAI-compatible (`kimi`),
         // the most common protocol for relay services; editable after import.
@@ -626,6 +624,39 @@ fn build_kimicode_settings(request: &DeepLinkImportRequest) -> serde_json::Value
             }]),
         );
         config.insert("defaultModelId".to_string(), json!("k3"));
+    }
+
+    json!(config)
+}
+
+/// Build Pi provider settings (camelCase DB fragment, mirrors `PiProviderConfig`).
+///
+/// Explicit third-party endpoint → `openai-completions` (the most common relay
+/// protocol); no endpoint → `anthropic-messages` (Pi's first-class protocol).
+/// The protocol lives in `type` in the DB fragment; `pi_config` maps it to
+/// models.json's `api` key on write.
+fn build_pi_settings(request: &DeepLinkImportRequest) -> serde_json::Value {
+    let endpoint = get_primary_endpoint(request);
+
+    let mut config = serde_json::Map::new();
+
+    if endpoint.is_empty() {
+        config.insert("type".to_string(), json!("anthropic-messages"));
+    } else {
+        config.insert("type".to_string(), json!("openai-completions"));
+        config.insert("baseUrl".to_string(), json!(endpoint));
+    }
+
+    if let Some(api_key) = &request.api_key {
+        config.insert("apiKey".to_string(), json!(api_key));
+    }
+
+    if let Some(model) = &request.model {
+        config.insert(
+            "models".to_string(),
+            json!([{ "id": model, "name": model }]),
+        );
+        config.insert("defaultModelId".to_string(), json!(model));
     }
 
     json!(config)
@@ -694,7 +725,7 @@ pub fn parse_and_merge_config(
         "gemini" => merge_gemini_config(&mut merged, &config_value)?,
         "grokbuild" => merge_grokbuild_config(&mut merged, &config_value)?,
         // Additive mode apps use JSON config directly; pass through as-is
-        "openclaw" | "opencode" | "hermes" | "kimicode" | "kimi-code" | "kimi" => {
+        "openclaw" | "opencode" | "hermes" | "kimicode" | "kimi-code" | "kimi" | "pi" => {
             merge_additive_config(&mut merged, &config_value)?;
         }
         "" => {
