@@ -217,6 +217,7 @@ fn provider_name_coalesce(log_alias: &str, provider_alias: &str) -> String {
          WHEN '_grok_session' THEN 'Grok Build (Session)' \
          WHEN '_kimicode_session' THEN 'Kimi Code (Session)' \
          WHEN '_pi_session' THEN 'Pi (Session)' \
+         WHEN '_omp_session' THEN 'Omp (Session)' \
          ELSE {log_alias}.provider_id END)"
     )
 }
@@ -302,7 +303,7 @@ pub(crate) fn effective_usage_log_filter(log_alias: &str) -> String {
     let proxy_data_source = data_source_expr("proxy_dedup");
     format!(
         "NOT (
-            {data_source} IN ('session_log', 'codex_session', 'gemini_session', 'opencode_session', 'kimicode_session', 'pi_session')
+            {data_source} IN ('session_log', 'codex_session', 'gemini_session', 'opencode_session', 'kimicode_session', 'pi_session', 'omp_session')
             AND EXISTS (
                 SELECT 1
                 FROM proxy_request_logs proxy_dedup
@@ -317,7 +318,7 @@ pub(crate) fn effective_usage_log_filter(log_alias: &str) -> String {
                       proxy_dedup.cache_creation_tokens = {log_alias}.cache_creation_tokens
                       OR (
                           {log_alias}.cache_creation_tokens = 0
-                          AND {data_source} IN ('codex_session', 'gemini_session', 'opencode_session', 'kimicode_session', 'pi_session')
+                          AND {data_source} IN ('codex_session', 'gemini_session', 'opencode_session', 'kimicode_session', 'pi_session', 'omp_session')
                       )
                   )
                   AND proxy_dedup.created_at BETWEEN
@@ -377,7 +378,7 @@ pub(crate) fn has_matching_proxy_usage_log(
     key: &DedupKey,
 ) -> Result<bool, AppError> {
     let allow_missing_cache_creation =
-        matches!(key.app_type, "codex" | "gemini" | "opencode" | "pi")
+        matches!(key.app_type, "codex" | "gemini" | "opencode" | "pi" | "omp")
             && key.cache_creation_tokens == 0;
 
     let l_data_source = data_source_expr("l");

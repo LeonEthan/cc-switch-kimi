@@ -24,6 +24,7 @@ mod linux_fix;
 mod mcp;
 mod model_capabilities;
 mod openclaw_config;
+mod omp_config;
 mod opencode_config;
 mod panic_hook;
 mod pi_config;
@@ -844,6 +845,13 @@ pub fn run() {
                 Ok(_) => log::debug!("○ No Pi provider changes from live config"),
                 Err(e) => log::warn!("✗ Failed to import Pi providers: {e}"),
             }
+            match crate::services::provider::import_omp_providers_from_live(&app_state) {
+                Ok(count) if count > 0 => {
+                    log::info!("✓ Synced {count} Omp provider(s) from live config");
+                }
+                Ok(_) => log::debug!("○ No Omp provider changes from live config"),
+                Err(e) => log::warn!("✗ Failed to import Omp providers: {e}"),
+            }
 
             // 2. OMO 配置导入（当数据库中无 OMO provider 时，从本地文件导入）
             {
@@ -963,6 +971,7 @@ pub fn run() {
                     crate::app_config::AppType::Hermes,
                     crate::app_config::AppType::KimiCode,
                     crate::app_config::AppType::Pi,
+                    crate::app_config::AppType::Omp,
                 ] {
                     match crate::services::prompt::PromptService::import_from_file_on_first_launch(
                         &app_state,
@@ -1608,6 +1617,14 @@ pub fn run() {
             commands::get_pi_default_provider_id,
             commands::get_pi_version,
             commands::get_pi_min_supported_version,
+            // Omp specific
+            commands::import_omp_providers_from_live,
+            commands::get_omp_live_provider_ids,
+            commands::get_omp_model_roles,
+            commands::get_omp_version,
+            commands::get_omp_min_supported_version,
+            commands::set_omp_provider_role,
+            commands::clear_omp_model_role,
             // Global upstream proxy
             commands::get_global_proxy_url,
             commands::set_global_proxy_url,

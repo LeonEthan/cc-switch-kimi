@@ -23,9 +23,10 @@ use crate::store::AppState;
 // Re-export sub-module functions for external access
 pub use live::{
     import_default_config, import_hermes_providers_from_live, import_kimicode_providers_from_live,
-    import_openclaw_providers_from_live, import_opencode_providers_from_live,
-    import_pi_providers_from_live, read_live_settings, should_import_default_config_on_startup,
-    sync_current_to_live, update_toml_common_config_snippet,
+    import_omp_providers_from_live, import_openclaw_providers_from_live,
+    import_opencode_providers_from_live, import_pi_providers_from_live, read_live_settings,
+    should_import_default_config_on_startup, sync_current_to_live,
+    update_toml_common_config_snippet,
 };
 
 // Internal re-exports (pub(crate))
@@ -2277,11 +2278,11 @@ impl ProviderService {
                 return Ok(true);
             }
 
-            // Pi under proxy takeover: the live file is proxy-owned. A plain
+            // Pi/Omp under proxy takeover: the live file is proxy-owned. A plain
             // live write would clobber the takeover fields (proxy baseUrl /
             // placeholder marker), so route edits through the takeover-aware
             // backup + sync machinery instead.
-            if matches!(app_type, AppType::Pi) {
+            if matches!(app_type, AppType::Pi | AppType::Omp) {
                 let has_live_backup =
                     futures::executor::block_on(state.db.get_live_backup(app_type.as_str()))
                         .ok()
@@ -2310,14 +2311,24 @@ impl ProviderService {
                         if live_taken_over
                             && futures::executor::block_on(state.proxy_service.is_running())
                         {
-                            futures::executor::block_on(
-                                state
-                                    .proxy_service
-                                    .sync_pi_live_from_provider_while_proxy_active(&provider),
-                            )
-                            .map_err(|e| {
-                                AppError::Message(format!("同步 Pi Live 配置失败: {e}"))
-                            })?;
+                            match app_type {
+                                AppType::Omp => futures::executor::block_on(
+                                    state
+                                        .proxy_service
+                                        .sync_omp_live_from_provider_while_proxy_active(&provider),
+                                )
+                                .map_err(|e| {
+                                    AppError::Message(format!("同步 Omp Live 配置失败: {e}"))
+                                })?,
+                                _ => futures::executor::block_on(
+                                    state
+                                        .proxy_service
+                                        .sync_pi_live_from_provider_while_proxy_active(&provider),
+                                )
+                                .map_err(|e| {
+                                    AppError::Message(format!("同步 Pi Live 配置失败: {e}"))
+                                })?,
+                            }
                         }
                     }
                     return Ok(true);
@@ -2506,7 +2517,7 @@ impl ProviderService {
                     remove_additive_provider_from_live(&app_type, id)?;
                 }
             }
-            AppType::OpenClaw | AppType::Hermes | AppType::KimiCode | AppType::Pi => {
+            AppType::OpenClaw | AppType::Hermes | AppType::KimiCode | AppType::Pi | AppType::Omp => {
                 remove_additive_provider_from_live(&app_type, id)?;
             }
             _ => {
@@ -2538,26 +2549,49 @@ impl ProviderService {
     ///    d. Write target provider config to live files
     ///    e. Sync MCP configuration
     pub fn switch(state: &AppState, app_type: AppType, id: &str) -> Result<SwitchResult, AppError> {
+        Self::switch_with_role(state, app_type, id, None)
+    }
+
+    /// Switch to a provider, optionally assigning it to an Omp model role.
+    ///
+    /// `role` is only meaningful for Omp (modelRoles-based selection); it is
+    /// validated up front and defaults to `"default"`. All other apps ignore it.
+    pub fn switch_with_role(
+        state: &AppState,
+        app_type: AppType,
+        id: &str,
+        role: Option<String>,
+    ) -> Result<SwitchResult, AppError> {
         // Check if provider exists
         let providers = state.db.get_all_providers(app_type.as_str())?;
         let _provider = providers
             .get(id)
             .ok_or_else(|| AppError::Message(format!("供应商 {id} 不存在")))?;
 
+        // Omp selects via modelRoles; validate the requested role up front
+        // (defaults to "default"). Other apps ignore `role` entirely.
+        let role = if matches!(app_type, AppType::Omp) {
+            let role = role.unwrap_or_else(|| "default".to_string());
+            crate::omp_config::validate_role(&role)?;
+            Some(role)
+        } else {
+            None
+        };
+
         // OMO providers are switched through their own exclusive path.
         if matches!(app_type, AppType::OpenCode) && _provider.category.as_deref() == Some("omo") {
-            return Self::switch_normal(state, app_type, id, &providers);
+            return Self::switch_normal(state, app_type, id, &providers, None);
         }
 
         // OMO Slim providers are switched through their own exclusive path.
         if matches!(app_type, AppType::OpenCode)
             && _provider.category.as_deref() == Some("omo-slim")
         {
-            return Self::switch_normal(state, app_type, id, &providers);
+            return Self::switch_normal(state, app_type, id, &providers, None);
         }
 
         if matches!(app_type, AppType::ClaudeDesktop) {
-            return Self::switch_normal(state, app_type, id, &providers);
+            return Self::switch_normal(state, app_type, id, &providers, None);
         }
 
         // Provider switches and takeover toggles both mutate live config and the
@@ -2566,7 +2600,12 @@ impl ProviderService {
         // normal live write.
         let _switch_guard = if matches!(
             app_type,
-            AppType::Claude | AppType::Codex | AppType::Gemini | AppType::GrokBuild | AppType::Pi
+            AppType::Claude
+                | AppType::Codex
+                | AppType::Gemini
+                | AppType::GrokBuild
+                | AppType::Pi
+                | AppType::Omp
         ) {
             Some(futures::executor::block_on(
                 state.proxy_service.lock_switch_for_app(app_type.as_str()),
@@ -2625,7 +2664,7 @@ impl ProviderService {
         }
 
         // Normal mode: full switch with Live config write
-        Self::switch_normal(state, app_type, id, &providers)
+        Self::switch_normal(state, app_type, id, &providers, role.as_deref())
     }
 
     /// Normal switch flow (non-proxy mode)
@@ -2634,6 +2673,7 @@ impl ProviderService {
         app_type: AppType,
         id: &str,
         providers: &indexmap::IndexMap<String, Provider>,
+        role: Option<&str>,
     ) -> Result<SwitchResult, AppError> {
         let provider = providers
             .get(id)
@@ -2724,6 +2764,15 @@ impl ProviderService {
             // models.json and updates defaultProvider/defaultModel in
             // settings.json in the same locked mutation.
             crate::pi_config::upsert_and_select(&provider.id, provider.settings_config.clone())?;
+        } else if matches!(app_type, AppType::Omp) {
+            // Omp is additive too: "switching" upserts the provider into
+            // models.yml and assigns modelRoles.<role> = "<key>/<defaultModelId>"
+            // in config.yml in the same locked mutation.
+            crate::omp_config::upsert_and_select(
+                &provider.id,
+                provider.settings_config.clone(),
+                role.unwrap_or("default"),
+            )?;
         } else {
             write_live_with_common_config(state.db.as_ref(), &app_type, provider)?;
 
@@ -3044,6 +3093,7 @@ impl ProviderService {
             AppType::Hermes => Ok(String::new()), // Hermes doesn't use common config snippets
             AppType::KimiCode => Ok(String::new()), // KimiCode doesn't use common config snippets
             AppType::Pi => Ok(String::new()),     // Pi doesn't use common config snippets
+            AppType::Omp => Ok(String::new()),    // Omp doesn't use common config snippets
         }
     }
 
@@ -3063,6 +3113,7 @@ impl ProviderService {
             AppType::Hermes => Ok(String::new()), // Hermes doesn't use common config snippets
             AppType::KimiCode => Ok(String::new()), // KimiCode doesn't use common config snippets
             AppType::Pi => Ok(String::new()),     // Pi doesn't use common config snippets
+            AppType::Omp => Ok(String::new()),    // Omp doesn't use common config snippets
         }
     }
 
@@ -3648,6 +3699,44 @@ impl ProviderService {
                     ));
                 }
             }
+            AppType::Omp => {
+                if !provider.settings_config.is_object() {
+                    return Err(AppError::localized(
+                        "provider.omp.settings.not_object",
+                        "Omp 配置必须是 JSON 对象",
+                        "Omp configuration must be a JSON object",
+                    ));
+                }
+                // Managed entries and OAuth-backed providers are Omp-owned: CC
+                // Switch must not write them (Omp owns/refreshes OAuth tokens
+                // in agent.db, which is strictly read-only for us).
+                if crate::omp_config::is_managed_provider(&provider.settings_config) {
+                    return Err(AppError::localized(
+                        "provider.omp.managed.readonly",
+                        format!(
+                            "托管供应商 '{}' 由 Omp 管理，请在 Omp CLI 中配置",
+                            provider.id
+                        ),
+                        format!(
+                            "Managed provider '{}' is controlled by Omp; configure it in the Omp CLI",
+                            provider.id
+                        ),
+                    ));
+                }
+                if crate::omp_config::provider_has_oauth_credential(&provider.id) {
+                    return Err(AppError::localized(
+                        "provider.omp.oauth.readonly",
+                        format!(
+                            "供应商 '{}' 使用 Omp OAuth 登录，请在 Omp CLI 中使用 /login 管理",
+                            provider.id
+                        ),
+                        format!(
+                            "Provider '{}' uses Omp OAuth; manage it with /login in the Omp CLI",
+                            provider.id
+                        ),
+                    ));
+                }
+            }
         }
 
         // Validate and clean UsageScript configuration (common for all app types)
@@ -3852,8 +3941,8 @@ impl ProviderService {
 
                 Ok((api_key, base_url))
             }
-            AppType::OpenClaw | AppType::Hermes | AppType::KimiCode | AppType::Pi => {
-                // OpenClaw/Hermes/Pi use apiKey and baseUrl directly on the object
+            AppType::OpenClaw | AppType::Hermes | AppType::KimiCode | AppType::Pi | AppType::Omp => {
+                // OpenClaw/Hermes/Pi/Omp use apiKey and baseUrl directly on the object
                 let api_key = provider
                     .settings_config
                     .get("apiKey")

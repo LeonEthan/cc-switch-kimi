@@ -179,6 +179,10 @@ pub(crate) fn parse_mcp_apps(apps_str: &str) -> Result<McpApps, AppError> {
                 // Pi has no native MCP support (extensions only), ignore silently
                 log::debug!("Pi doesn't support MCP, ignoring in apps parameter");
             }
+            "omp" => {
+                // Omp has no native MCP support, ignore silently
+                log::debug!("Omp doesn't support MCP, ignoring in apps parameter");
+            }
             other => {
                 return Err(AppError::InvalidInput(format!(
                     "Invalid app in 'apps': {other}"

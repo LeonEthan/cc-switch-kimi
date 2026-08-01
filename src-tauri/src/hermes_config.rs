@@ -242,7 +242,7 @@ fn deduplicate_top_level_keys(raw: &str) -> String {
 /// (callers using `split_inclusive`); both count as end-of-line after the
 /// colon. Rejecting `\r` here used to make every section lookup miss on
 /// CRLF configs, turning section replacement into endless appends (#3633).
-fn is_top_level_key_line(line: &str) -> bool {
+pub(crate) fn is_top_level_key_line(line: &str) -> bool {
     if line.is_empty() {
         return false;
     }
@@ -264,7 +264,7 @@ fn is_top_level_key_line(line: &str) -> bool {
 /// whitespace), is not a comment, and contains `:` after the key name.
 ///
 /// Returns `(start_byte_inclusive, end_byte_exclusive)` or `None` if not found.
-fn find_yaml_section_range(raw: &str, section_key: &str) -> Option<(usize, usize)> {
+pub(crate) fn find_yaml_section_range(raw: &str, section_key: &str) -> Option<(usize, usize)> {
     let target = format!("{}:", section_key);
     let mut section_start = None;
     let mut offset = 0;
@@ -298,7 +298,7 @@ fn find_yaml_section_range(raw: &str, section_key: &str) -> Option<(usize, usize
 ///   default: "anthropic/claude-opus-4-8"
 ///   provider: "openrouter"
 /// ```
-fn serialize_yaml_section(key: &str, value: &serde_yaml::Value) -> Result<String, AppError> {
+pub(crate) fn serialize_yaml_section(key: &str, value: &serde_yaml::Value) -> Result<String, AppError> {
     let mut section = serde_yaml::Mapping::new();
     section.insert(serde_yaml::Value::String(key.to_string()), value.clone());
     let yaml_str = serde_yaml::to_string(&serde_yaml::Value::Mapping(section))
@@ -310,7 +310,7 @@ fn serialize_yaml_section(key: &str, value: &serde_yaml::Value) -> Result<String
 /// Used to clean residual duplicates of a key after replacing its first
 /// occurrence; safe values come from the keep-last healed read, so dropping
 /// all on-disk copies here loses nothing.
-fn remove_all_sections(raw: &str, section_key: &str) -> String {
+pub(crate) fn remove_all_sections(raw: &str, section_key: &str) -> String {
     let mut result = String::with_capacity(raw.len());
     let mut rest = raw;
     while let Some((start, end)) = find_yaml_section_range(rest, section_key) {
@@ -322,7 +322,7 @@ fn remove_all_sections(raw: &str, section_key: &str) -> String {
 }
 
 /// Replace a YAML section in raw text, or append it if not found.
-fn replace_yaml_section(
+pub(crate) fn replace_yaml_section(
     raw: &str,
     section_key: &str,
     value: &serde_yaml::Value,

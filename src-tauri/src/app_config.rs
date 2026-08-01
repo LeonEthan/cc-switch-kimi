@@ -36,6 +36,7 @@ impl McpApps {
             AppType::Hermes => self.hermes,
             AppType::KimiCode => self.kimicode,
             AppType::Pi => false, // Pi has no native MCP support (extensions only)
+            AppType::Omp => false, // Omp has no native MCP support (mirrors Pi)
             AppType::ClaudeDesktop => false,
         }
     }
@@ -52,6 +53,7 @@ impl McpApps {
             AppType::Hermes => self.hermes = enabled,
             AppType::KimiCode => self.kimicode = enabled,
             AppType::Pi => {}            // Pi has no native MCP support, ignore
+            AppType::Omp => {}           // Omp has no native MCP support, ignore
             AppType::ClaudeDesktop => {} // Claude Desktop 3P provider config doesn't support MCP here
         }
     }
@@ -114,6 +116,8 @@ pub struct SkillApps {
     pub kimicode: bool,
     #[serde(default)]
     pub pi: bool,
+    #[serde(default)]
+    pub omp: bool,
 }
 
 impl SkillApps {
@@ -128,6 +132,7 @@ impl SkillApps {
             AppType::Hermes => self.hermes,
             AppType::KimiCode => self.kimicode,
             AppType::Pi => self.pi,
+            AppType::Omp => self.omp,
             AppType::OpenClaw => false, // OpenClaw doesn't support Skills
             AppType::ClaudeDesktop => false,
         }
@@ -144,6 +149,7 @@ impl SkillApps {
             AppType::Hermes => self.hermes = enabled,
             AppType::KimiCode => self.kimicode = enabled,
             AppType::Pi => self.pi = enabled,
+            AppType::Omp => self.omp = enabled,
             AppType::OpenClaw => {} // OpenClaw doesn't support Skills, ignore
             AppType::ClaudeDesktop => {} // Claude Desktop 3P profiles don't use CC Switch skill sync
         }
@@ -176,6 +182,9 @@ impl SkillApps {
         if self.pi {
             apps.push(AppType::Pi);
         }
+        if self.omp {
+            apps.push(AppType::Omp);
+        }
         apps
     }
 
@@ -189,6 +198,7 @@ impl SkillApps {
             && !self.hermes
             && !self.kimicode
             && !self.pi
+            && !self.omp
     }
 
     /// 仅启用指定应用（其他应用设为禁用）
@@ -338,6 +348,9 @@ pub struct McpRoot {
     /// Pi MCP 配置（占位；Pi 无原生 MCP 支持）
     #[serde(default, skip_serializing_if = "McpConfig::is_empty")]
     pub pi: McpConfig,
+    /// Omp MCP 配置（占位；Omp 无原生 MCP 支持）
+    #[serde(default, skip_serializing_if = "McpConfig::is_empty")]
+    pub omp: McpConfig,
 }
 
 impl Default for McpRoot {
@@ -356,6 +369,7 @@ impl Default for McpRoot {
             hermes: McpConfig::default(),
             kimicode: McpConfig::default(),
             pi: McpConfig::default(),
+            omp: McpConfig::default(),
         }
     }
 }
@@ -395,6 +409,8 @@ pub struct PromptRoot {
     pub kimicode: PromptConfig,
     #[serde(default)]
     pub pi: PromptConfig,
+    #[serde(default)]
+    pub omp: PromptConfig,
 }
 
 use crate::config::{copy_file, get_app_config_dir, get_app_config_path, write_json_file};
@@ -421,6 +437,7 @@ pub enum AppType {
     Hermes,
     KimiCode,
     Pi,
+    Omp,
 }
 
 impl AppType {
@@ -436,13 +453,14 @@ impl AppType {
             AppType::Hermes => "hermes",
             AppType::KimiCode => "kimicode",
             AppType::Pi => "pi",
+            AppType::Omp => "omp",
         }
     }
 
     /// Check if this app uses additive mode
     ///
     /// - Switch mode (false): Only the current provider is written to live config (Claude, Codex, Gemini)
-    /// - Additive mode (true): All providers are written to live config (OpenCode, OpenClaw, Hermes, KimiCode, Pi)
+    /// - Additive mode (true): All providers are written to live config (OpenCode, OpenClaw, Hermes, KimiCode, Pi, Omp)
     pub fn is_additive_mode(&self) -> bool {
         matches!(
             self,
@@ -451,6 +469,7 @@ impl AppType {
                 | AppType::Hermes
                 | AppType::KimiCode
                 | AppType::Pi
+                | AppType::Omp
         )
     }
 
@@ -467,6 +486,7 @@ impl AppType {
             AppType::Hermes,
             AppType::KimiCode,
             AppType::Pi,
+            AppType::Omp,
         ]
         .into_iter()
     }
@@ -488,10 +508,11 @@ impl FromStr for AppType {
             "hermes" => Ok(AppType::Hermes),
             "kimicode" | "kimi-code" | "kimi_code" | "kimi" => Ok(AppType::KimiCode),
             "pi" => Ok(AppType::Pi),
+            "omp" | "oh-my-pi" | "oh_my_pi" => Ok(AppType::Omp),
             other => Err(AppError::localized(
                 "unsupported_app",
-                format!("不支持的应用标识: '{other}'。可选值: claude, claude-desktop, codex, gemini, grokbuild, opencode, openclaw, hermes, kimicode, pi。"),
-                format!("Unsupported app id: '{other}'. Allowed: claude, claude-desktop, codex, gemini, grokbuild, opencode, openclaw, hermes, kimicode, pi."),
+                format!("不支持的应用标识: '{other}'。可选值: claude, claude-desktop, codex, gemini, grokbuild, opencode, openclaw, hermes, kimicode, pi, omp。"),
+                format!("Unsupported app id: '{other}'. Allowed: claude, claude-desktop, codex, gemini, grokbuild, opencode, openclaw, hermes, kimicode, pi, omp."),
             )),
         }
     }
@@ -536,6 +557,7 @@ impl CommonConfigSnippets {
             AppType::Hermes => self.hermes.as_ref(),
             AppType::KimiCode => self.kimicode.as_ref(),
             AppType::Pi => None, // Pi has no common config snippet
+            AppType::Omp => None, // Omp has no common config snippet
         }
     }
 
@@ -552,6 +574,7 @@ impl CommonConfigSnippets {
             AppType::Hermes => self.hermes = snippet,
             AppType::KimiCode => self.kimicode = snippet,
             AppType::Pi => {} // Pi has no common config snippet
+            AppType::Omp => {} // Omp has no common config snippet
         }
     }
 }
@@ -761,6 +784,7 @@ impl MultiAppConfig {
             AppType::Hermes => &self.mcp.hermes,
             AppType::KimiCode => &self.mcp.kimicode,
             AppType::Pi => &self.mcp.pi,
+            AppType::Omp => &self.mcp.omp,
         }
     }
 
@@ -777,6 +801,7 @@ impl MultiAppConfig {
             AppType::Hermes => &mut self.mcp.hermes,
             AppType::KimiCode => &mut self.mcp.kimicode,
             AppType::Pi => &mut self.mcp.pi,
+            AppType::Omp => &mut self.mcp.omp,
         }
     }
 
@@ -796,6 +821,7 @@ impl MultiAppConfig {
         Self::auto_import_prompt_if_exists(&mut config, AppType::Hermes)?;
         Self::auto_import_prompt_if_exists(&mut config, AppType::KimiCode)?;
         Self::auto_import_prompt_if_exists(&mut config, AppType::Pi)?;
+        Self::auto_import_prompt_if_exists(&mut config, AppType::Omp)?;
 
         Ok(config)
     }
@@ -821,6 +847,7 @@ impl MultiAppConfig {
             || !self.prompts.openclaw.prompts.is_empty()
             || !self.prompts.hermes.prompts.is_empty()
             || !self.prompts.pi.prompts.is_empty()
+            || !self.prompts.omp.prompts.is_empty()
         {
             return Ok(false);
         }
@@ -838,6 +865,7 @@ impl MultiAppConfig {
             AppType::Hermes,
             AppType::KimiCode,
             AppType::Pi,
+            AppType::Omp,
         ] {
             // 复用已有的单应用导入逻辑
             if Self::auto_import_prompt_if_exists(self, app)? {
@@ -914,6 +942,7 @@ impl MultiAppConfig {
             AppType::Hermes => &mut config.prompts.hermes.prompts,
             AppType::KimiCode => &mut config.prompts.kimicode.prompts,
             AppType::Pi => &mut config.prompts.pi.prompts,
+            AppType::Omp => &mut config.prompts.omp.prompts,
         };
 
         prompts.insert(id, prompt);
@@ -959,6 +988,7 @@ impl MultiAppConfig {
                 AppType::Hermes => continue,   // Hermes didn't exist in v3.6.x, skip
                 AppType::KimiCode => continue, // KimiCode didn't exist in v3.6.x, skip
                 AppType::Pi => continue,       // Pi didn't exist in v3.6.x, skip
+                AppType::Omp => continue,      // Omp didn't exist in v3.6.x, skip
             };
 
             for (id, entry) in old_servers {

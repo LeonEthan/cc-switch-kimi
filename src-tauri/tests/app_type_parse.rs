@@ -28,6 +28,9 @@ fn parse_known_apps_case_insensitive_and_trim() {
         Ok(AppType::KimiCode)
     ));
     assert!(matches!(AppType::from_str("kimi"), Ok(AppType::KimiCode)));
+    assert!(matches!(AppType::from_str("omp"), Ok(AppType::Omp)));
+    assert!(matches!(AppType::from_str("oh-my-pi"), Ok(AppType::Omp)));
+    assert!(matches!(AppType::from_str(" Omp \n"), Ok(AppType::Omp)));
 }
 
 #[test]

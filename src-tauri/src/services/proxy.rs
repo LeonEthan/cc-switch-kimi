@@ -487,6 +487,9 @@ impl ProxyService {
         } else if live_taken_over && matches!(app_type, AppType::Pi) {
             self.sync_pi_live_from_provider_while_proxy_active(&previous_provider)
                 .await
+        } else if live_taken_over && matches!(app_type, AppType::Omp) {
+            self.sync_omp_live_from_provider_while_proxy_active(&previous_provider)
+                .await
         } else {
             Ok(())
         };
@@ -718,6 +721,12 @@ impl ProxyService {
             .await
             .map(|c| c.enabled)
             .unwrap_or(false);
+        let omp_enabled = self
+            .db
+            .get_proxy_config_for_app("omp")
+            .await
+            .map(|c| c.enabled)
+            .unwrap_or(false);
         // OpenCode and OpenClaw don't support proxy features, always return false
         let opencode_enabled = false;
         let openclaw_enabled = false;
@@ -730,6 +739,7 @@ impl ProxyService {
             opencode: opencode_enabled,
             openclaw: openclaw_enabled,
             pi: pi_enabled,
+            omp: omp_enabled,
         })
     }
 
@@ -974,6 +984,7 @@ impl ProxyService {
             AppType::Gemini => self.read_gemini_live()?,
             AppType::GrokBuild => self.read_grok_live()?,
             AppType::Pi => self.read_pi_live()?,
+            AppType::Omp => self.read_omp_live()?,
             _ => return Err("该应用不支持代理功能".to_string()),
         };
 
@@ -1309,6 +1320,71 @@ impl ProxyService {
                     }
                 }
             }
+            AppType::Omp => {
+                // Omp additive 模式下普通切换不写 is_current；以「DB current，
+                // 否则 live default 角色 selector」定位要回填的供应商（与接管时
+                // resolve_omp_current_provider 的选择一致）。
+                let provider_id =
+                    crate::settings::get_effective_current_provider(&self.db, &AppType::Omp)
+                        .map_err(|e| format!("获取 Omp 当前供应商失败: {e}"))?
+                        .or_else(|| {
+                            crate::omp_config::get_default_role_provider_id()
+                                .ok()
+                                .flatten()
+                        });
+
+                if let Some(provider_id) = provider_id {
+                    if let Ok(Some(mut provider)) = self.db.get_provider_by_id(&provider_id, "omp")
+                    {
+                        // 凭据来源：models.yml 内联 apiKey（仅具体值；跳过占位符
+                        // 与 $VAR/!command 模板）。OAuth 凭据由 Omp 托管
+                        // （agent.db），绝不读取也绝不同步进 CC Switch 的数据库。
+                        let token = live_config
+                            .get("modelsSource")
+                            .and_then(|v| v.as_str())
+                            .and_then(Self::parse_omp_models_source)
+                            .and_then(|models| {
+                                models
+                                    .get("providers")
+                                    .and_then(|p| p.get(&provider_id))
+                                    .and_then(|e| e.get("apiKey"))
+                                    .and_then(|v| v.as_str())
+                                    .map(ToString::to_string)
+                            })
+                            .filter(|k| {
+                                let k = k.trim();
+                                !k.is_empty()
+                                    && k != PROXY_TOKEN_PLACEHOLDER
+                                    && !k.starts_with('$')
+                                    && !k.starts_with('!')
+                            });
+
+                        if let Some(token) = token {
+                            if provider.settings_config.is_null() {
+                                provider.settings_config = json!({});
+                            }
+                            if let Some(root) = provider.settings_config.as_object_mut() {
+                                root.insert("apiKey".to_string(), json!(token.trim()));
+                                if let Err(e) = self.db.update_provider_settings_config(
+                                    "omp",
+                                    &provider_id,
+                                    &provider.settings_config,
+                                ) {
+                                    log::warn!("同步 Omp Token 到数据库失败: {e}");
+                                } else {
+                                    log::info!(
+                                        "已同步 Omp Token 到数据库 (provider: {provider_id})"
+                                    );
+                                }
+                            } else {
+                                log::warn!(
+                                    "Omp provider settings_config 格式异常（非对象），跳过写入 Token (provider: {provider_id})"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
             _ => {}
         }
 
@@ -1338,6 +1414,11 @@ impl ProxyService {
 
         if let Ok(live_config) = self.read_pi_live() {
             self.sync_live_config_to_provider(&AppType::Pi, &live_config)
+                .await?;
+        }
+
+        if let Ok(live_config) = self.read_omp_live() {
+            self.sync_live_config_to_provider(&AppType::Omp, &live_config)
                 .await?;
         }
 
@@ -1393,7 +1474,7 @@ impl ProxyService {
             .map_err(|e| format!("清除接管状态失败: {e}"))?;
 
         // 4. 清除所有应用的 enabled 状态（用户手动关闭，不需要下次自动恢复）
-        for app_type in ["claude", "codex", "gemini", "grokbuild", "pi"] {
+        for app_type in ["claude", "codex", "gemini", "grokbuild", "pi", "omp"] {
             if let Ok(mut config) = self.db.get_proxy_config_for_app(app_type).await {
                 if config.enabled {
                     config.enabled = false;
@@ -1532,6 +1613,20 @@ impl ProxyService {
             }
         }
 
+        // Omp
+        if let Ok(config) = self.read_omp_live() {
+            if Self::live_has_proxy_placeholder_for_app(&AppType::Omp, &config) {
+                log::warn!("omp Live 已被代理接管，不备份；下次 stop 会从 SSOT 重建 Live");
+            } else {
+                let json_str = serde_json::to_string(&config)
+                    .map_err(|e| format!("序列化 Omp 配置失败: {e}"))?;
+                self.db
+                    .save_live_backup("omp", &json_str)
+                    .await
+                    .map_err(|e| format!("备份 Omp 配置失败: {e}"))?;
+            }
+        }
+
         log::info!("已备份所有应用的 Live 配置");
         Ok(())
     }
@@ -1544,6 +1639,7 @@ impl ProxyService {
             AppType::Gemini => ("gemini", self.read_gemini_live()?),
             AppType::GrokBuild => ("grokbuild", self.read_grok_live()?),
             AppType::Pi => ("pi", self.read_pi_live()?),
+            AppType::Omp => ("omp", self.read_omp_live()?),
             _ => return Err("该应用不支持代理功能".to_string()),
         };
 
@@ -1648,6 +1744,7 @@ impl ProxyService {
         let (proxy_url, proxy_codex_base_url) = self.build_proxy_urls().await?;
         let proxy_grok_base_url = format!("{}/grokbuild/v1", proxy_url.trim_end_matches('/'));
         let proxy_pi_base_url = format!("{}/pi", proxy_url.trim_end_matches('/'));
+        let proxy_omp_base_url = format!("{}/omp", proxy_url.trim_end_matches('/'));
 
         // Claude: 修改 ANTHROPIC_BASE_URL，使用占位符替代真实 Token（代理会注入真实 Token）
         if let Ok(mut live_config) = self.read_claude_live() {
@@ -1714,6 +1811,21 @@ impl ProxyService {
                 log::info!("Pi Live 配置已接管，代理地址: {proxy_pi_base_url}");
             } else {
                 log::info!("Pi 当前供应商无可注入凭据或协议不可路由，跳过代理接管");
+            }
+        }
+
+        // Omp: 仅当能解析出带可注入凭据的当前供应商时才接管（OAuth 登录由
+        // Omp 托管，代理无法注入）；不满足则跳过，不阻断其它应用的接管。
+        if let Ok(provider) = self.resolve_omp_current_provider() {
+            if Self::omp_provider_has_injectable_key(&provider)
+                && (crate::proxy::providers::omp_provider_supports_anthropic_messages(&provider)
+                    || crate::proxy::providers::omp_provider_supports_chat_completions(&provider))
+            {
+                self.sync_omp_live_from_provider_while_proxy_active(&provider)
+                    .await?;
+                log::info!("Omp Live 配置已接管，代理地址: {proxy_omp_base_url}");
+            } else {
+                log::info!("Omp 当前供应商无可注入凭据或协议不可路由，跳过代理接管");
             }
         }
 
@@ -1803,6 +1915,29 @@ impl ProxyService {
                     .await?;
                 let proxy_pi_base_url = format!("{}/pi", proxy_url.trim_end_matches('/'));
                 log::info!("Pi Live 配置已接管，代理地址: {proxy_pi_base_url}");
+            }
+            AppType::Omp => {
+                let provider = self.resolve_omp_current_provider()?;
+                if !Self::omp_provider_has_injectable_key(&provider) {
+                    return Err(
+                        "Omp 当前供应商没有可注入的 API Key（OAuth 登录由 Omp 托管，代理无法注入凭据）。请先在供应商配置中填写 API Key \
+                         (The current Omp provider has no API key the proxy can inject; OAuth logins are owned by Omp. Set an API key on the provider first)"
+                            .to_string(),
+                    );
+                }
+                if !crate::proxy::providers::omp_provider_supports_anthropic_messages(&provider)
+                    && !crate::proxy::providers::omp_provider_supports_chat_completions(&provider)
+                {
+                    return Err(
+                        "Omp 当前供应商的协议暂不支持本地路由（仅支持 anthropic-messages / openai-completions） \
+                         (The current Omp provider's protocol is not routable by the local proxy; only anthropic-messages / openai-completions are supported)"
+                            .to_string(),
+                    );
+                }
+                self.sync_omp_live_from_provider_while_proxy_active(&provider)
+                    .await?;
+                let proxy_omp_base_url = format!("{}/omp", proxy_url.trim_end_matches('/'));
+                log::info!("Omp Live 配置已接管，代理地址: {proxy_omp_base_url}");
             }
             _ => return Err("该应用不支持代理功能".to_string()),
         }
@@ -1898,6 +2033,23 @@ impl ProxyService {
                     }
                 }
             }
+            AppType::Omp => {
+                if let Ok(provider) = self.resolve_omp_current_provider() {
+                    if Self::omp_provider_has_injectable_key(&provider)
+                        && (crate::proxy::providers::omp_provider_supports_anthropic_messages(
+                            &provider,
+                        ) || crate::proxy::providers::omp_provider_supports_chat_completions(
+                            &provider,
+                        ))
+                    {
+                        let _ = self
+                            .sync_omp_live_from_provider_while_proxy_active(&provider)
+                            .await;
+                    } else {
+                        log::info!("Omp 当前供应商无可注入凭据或协议不可路由，跳过代理接管");
+                    }
+                }
+            }
             _ => {}
         }
 
@@ -1946,6 +2098,14 @@ impl ProxyService {
                     log::info!("Pi Live 配置已恢复");
                 }
             }
+            AppType::Omp => {
+                if let Ok(Some(backup)) = self.db.get_live_backup("omp").await {
+                    let config: Value = serde_json::from_str(&backup.original_config)
+                        .map_err(|e| format!("解析 Omp 备份失败: {e}"))?;
+                    self.write_omp_live(&config)?;
+                    log::info!("Omp Live 配置已恢复");
+                }
+            }
             _ => {}
         }
 
@@ -1962,6 +2122,7 @@ impl ProxyService {
             AppType::Gemini,
             AppType::GrokBuild,
             AppType::Pi,
+            AppType::Omp,
         ] {
             if let Err(e) = self
                 .restore_live_config_for_app_with_fallback(&app_type)
@@ -2053,6 +2214,7 @@ impl ProxyService {
             AppType::Gemini => self.write_gemini_live(config),
             AppType::GrokBuild => self.write_grok_live(config),
             AppType::Pi => self.write_pi_live(config),
+            AppType::Omp => self.write_omp_live(config),
             _ => Err("该应用不支持代理功能".to_string()),
         }
     }
@@ -2077,6 +2239,10 @@ impl ProxyService {
             },
             AppType::Pi => match self.read_pi_live() {
                 Ok(config) => Self::is_pi_live_taken_over(&config),
+                Err(_) => false,
+            },
+            AppType::Omp => match self.read_omp_live() {
+                Ok(config) => Self::is_omp_live_taken_over(&config),
                 Err(_) => false,
             },
             _ => false,
@@ -2131,6 +2297,7 @@ impl ProxyService {
             AppType::Gemini => self.cleanup_gemini_takeover_placeholders_in_live(),
             AppType::GrokBuild => self.cleanup_grok_takeover_placeholders_in_live(),
             AppType::Pi => self.cleanup_pi_takeover_placeholders_in_live(),
+            AppType::Omp => self.cleanup_omp_takeover_placeholders_in_live(),
             _ => Ok(()),
         }
     }
@@ -2251,6 +2418,21 @@ impl ProxyService {
                     entry.get("apiKey").and_then(|v| v.as_str()) == Some(PROXY_TOKEN_PLACEHOLDER);
                 Ok(base_url_matches && placeholder_matches)
             }
+            AppType::Omp => {
+                let proxy_omp_base_url = format!("{}/omp", proxy_url.trim_end_matches('/'));
+                let selected = crate::omp_config::selected_provider_entry()
+                    .map_err(|e| format!("读取 Omp 默认供应商条目失败: {e}"))?;
+                let Some((_id, entry)) = selected else {
+                    return Ok(false);
+                };
+                let base_url_matches = entry
+                    .get("baseUrl")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|url| Self::proxy_urls_match(url, &proxy_omp_base_url));
+                let placeholder_matches =
+                    entry.get("apiKey").and_then(|v| v.as_str()) == Some(PROXY_TOKEN_PLACEHOLDER);
+                Ok(base_url_matches && placeholder_matches)
+            }
             _ => Ok(false),
         }
     }
@@ -2364,10 +2546,21 @@ impl ProxyService {
             .map_err(|e| format!("清理 Pi 接管占位符失败: {e}"))
     }
 
+    fn cleanup_omp_takeover_placeholders_in_live(&self) -> Result<(), String> {
+        crate::omp_config::remove_takeover_markers_all(PROXY_TOKEN_PLACEHOLDER)
+            .map(|_| ())
+            .map_err(|e| format!("清理 Omp 接管占位符失败: {e}"))
+    }
+
     /// 检查是否处于 Live 接管模式
     pub async fn is_takeover_active(&self) -> Result<bool, String> {
         let status = self.get_takeover_status().await?;
-        Ok(status.claude || status.codex || status.gemini || status.grokbuild || status.pi)
+        Ok(status.claude
+            || status.codex
+            || status.gemini
+            || status.grokbuild
+            || status.pi
+            || status.omp)
     }
 
     /// 从异常退出中恢复（启动时调用）
@@ -2425,6 +2618,12 @@ impl ProxyService {
 
         if let Ok(config) = self.read_pi_live() {
             if Self::is_pi_live_taken_over(&config) {
+                return true;
+            }
+        }
+
+        if let Ok(config) = self.read_omp_live() {
+            if Self::is_omp_live_taken_over(&config) {
                 return true;
             }
         }
@@ -2500,6 +2699,10 @@ impl ProxyService {
         crate::pi_config::has_takeover_markers(config, PROXY_TOKEN_PLACEHOLDER)
     }
 
+    fn is_omp_live_taken_over(config: &Value) -> bool {
+        crate::omp_config::has_takeover_markers(config, PROXY_TOKEN_PLACEHOLDER)
+    }
+
     /// 判断给定的 Live/备份配置是否已被代理接管（包含占位符）
     ///
     /// 用途：检测"备份里存的其实是代理配置"这种异常历史状态。
@@ -2513,6 +2716,7 @@ impl ProxyService {
             AppType::Gemini => Self::is_gemini_live_taken_over(config),
             AppType::GrokBuild => Self::is_grok_live_taken_over(config),
             AppType::Pi => Self::is_pi_live_taken_over(config),
+            AppType::Omp => Self::is_omp_live_taken_over(config),
             _ => false,
         }
     }
@@ -2634,6 +2838,30 @@ impl ProxyService {
                 .map_err(|e| format!("更新 {app_type} 备份快照失败: {e}"))?;
                 serde_json::to_string(&snapshot).map_err(|e| format!("序列化 Pi 配置失败: {e}"))?
             }
+            AppType::Omp => {
+                // Omp 的备份是整份 live 快照（models.yml 原文 + config.yml）：
+                // 在既有备份（或当前 live 快照）上就地更新该供应商的条目，
+                // 保留其它供应商、注释与格式；modelRoles 不动。
+                let mut snapshot = self
+                    .db
+                    .get_live_backup(app_type)
+                    .await
+                    .map_err(|e| format!("读取 {app_type} 现有备份失败: {e}"))?
+                    .map(|backup| {
+                        serde_json::from_str::<Value>(&backup.original_config)
+                            .map_err(|e| format!("解析 {app_type} 现有备份失败: {e}"))
+                    })
+                    .transpose()?
+                    .or_else(|| self.read_omp_live().ok())
+                    .ok_or_else(|| format!("无法构建 {app_type} Live 备份快照"))?;
+                crate::omp_config::patch_snapshot_provider(
+                    &mut snapshot,
+                    &provider.id,
+                    &provider.settings_config,
+                )
+                .map_err(|e| format!("更新 {app_type} 备份快照失败: {e}"))?;
+                serde_json::to_string(&snapshot).map_err(|e| format!("序列化 Omp 配置失败: {e}"))?
+            }
             AppType::Gemini => {
                 // Gemini takeover 仅修改 .env；settings.json（含 mcpServers）保持原样。
                 let env_backup = if let Some(env) = effective_settings.get("env") {
@@ -2745,6 +2973,9 @@ impl ProxyService {
                         .await?;
                 } else if live_taken_over && matches!(app_type_enum, AppType::Pi) {
                     self.sync_pi_live_from_provider_while_proxy_active(&provider)
+                        .await?;
+                } else if live_taken_over && matches!(app_type_enum, AppType::Omp) {
+                    self.sync_omp_live_from_provider_while_proxy_active(&provider)
                         .await?;
                 }
             }
@@ -3350,6 +3581,98 @@ impl ProxyService {
                             PROXY_TOKEN_PLACEHOLDER,
                         )
                         .map_err(|e| format!("清理 Pi 原供应商 '{prev_id}' 接管标记失败: {e}"))?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Omp 的 Live 快照（models.yml 原文 + config.yml；OAuth 凭据由 Omp 托管
+    /// 于 agent.db，绝不进入快照）。
+    fn read_omp_live(&self) -> Result<Value, String> {
+        crate::omp_config::read_live_snapshot().map_err(|e| format!("读取 Omp 配置失败: {e}"))
+    }
+
+    fn write_omp_live(&self, config: &Value) -> Result<(), String> {
+        crate::omp_config::write_live_snapshot(config, PROXY_TOKEN_PLACEHOLDER)
+            .map_err(|e| format!("写入 Omp 配置失败: {e}"))
+    }
+
+    /// 解析 models.yml 原文为 JSON（仅用于读取快照中的凭据；解析失败返回
+    /// None，不影响主流程）。
+    fn parse_omp_models_source(source: &str) -> Option<Value> {
+        let yaml = serde_yaml::from_str::<serde_yaml::Value>(source).ok()?;
+        serde_json::to_value(yaml).ok()
+    }
+
+    /// Omp 的"当前供应商"解析：优先 CC Switch 记录的 current（接管/热切换
+    /// 会写入）；additive 模式下普通切换不写 current，此时回退到 Omp Live
+    /// default 角色 selector 指向的供应商（若它对应某个 DB 供应商）。
+    fn resolve_omp_current_provider(&self) -> Result<Provider, String> {
+        if let Some(provider) = self.get_current_provider_for_app(&AppType::Omp)? {
+            return Ok(provider);
+        }
+        let live_selected = crate::omp_config::get_default_role_provider_id()
+            .map_err(|e| format!("读取 Omp 默认角色供应商失败: {e}"))?;
+        if let Some(live_id) = live_selected {
+            if let Ok(Some(provider)) = self.db.get_provider_by_id(&live_id, "omp") {
+                return Ok(provider);
+            }
+        }
+        Err("Omp 当前供应商不存在，无法接管 Live 配置".to_string())
+    }
+
+    /// 代理能否为该 Omp 供应商注入凭据（OAuth 登录由 Omp 托管，代理拿不到
+    /// token，只有 DB 里存了 API Key 的供应商才能被接管）。
+    fn omp_provider_has_injectable_key(provider: &Provider) -> bool {
+        provider
+            .settings_config
+            .get("apiKey")
+            .or_else(|| provider.settings_config.get("api_key"))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .is_some_and(|s| !s.is_empty())
+    }
+
+    /// 热切换/编辑时让 Omp Live 跟随目标供应商：把目标供应商条目的
+    /// baseUrl 改指本地代理、写入占位符标记（modelRoles 不动）；同时把上一
+    /// 个被接管条目恢复为 DB 里的原始配置（任一时刻至多一个条目带接管标
+    /// 记）。
+    pub async fn sync_omp_live_from_provider_while_proxy_active(
+        &self,
+        provider: &Provider,
+    ) -> Result<(), String> {
+        let (proxy_url, _) = self.build_proxy_urls().await?;
+        let proxy_omp_base_url = format!("{}/omp", proxy_url.trim_end_matches('/'));
+
+        let previous = crate::omp_config::apply_takeover_and_select(
+            &provider.id,
+            &provider.settings_config,
+            &proxy_omp_base_url,
+            PROXY_TOKEN_PLACEHOLDER,
+        )
+        .map_err(|e| format!("接管 Omp Live 配置失败: {e}"))?;
+
+        if let Some(prev_id) = previous {
+            if prev_id != provider.id {
+                match self.db.get_provider_by_id(&prev_id, "omp") {
+                    Ok(Some(prev_provider)) => {
+                        crate::omp_config::revert_provider_takeover(
+                            &prev_id,
+                            &prev_provider.settings_config,
+                            PROXY_TOKEN_PLACEHOLDER,
+                        )
+                        .map_err(|e| format!("恢复 Omp 原供应商 '{prev_id}' 配置失败: {e}"))?;
+                    }
+                    _ => {
+                        // 该条目不由 CC Switch 管理：只剥掉接管标记，避免留下
+                        // 指向本地代理的悬空路由。
+                        crate::omp_config::remove_provider_takeover_markers(
+                            &prev_id,
+                            PROXY_TOKEN_PLACEHOLDER,
+                        )
+                        .map_err(|e| format!("清理 Omp 原供应商 '{prev_id}' 接管标记失败: {e}"))?;
                     }
                 }
             }
@@ -7960,6 +8283,373 @@ experimental_bearer_token = "PROXY_MANAGED"
             .expect("sync placeholder-only");
         let updated = db
             .get_provider_by_id("a", "pi")
+            .expect("read provider")
+            .expect("provider exists");
+        assert!(
+            updated.settings_config.get("apiKey").is_none(),
+            "the takeover placeholder must not be synced into the DB"
+        );
+    }
+
+    // ==================== Omp takeover ====================
+
+    fn omp_provider_config(base_url: &str, api_key: Option<&str>, api: &str) -> Value {
+        let mut config = json!({
+            "api": api,
+            "baseUrl": base_url,
+            "models": [{ "id": "model-1", "name": "Model 1", "contextWindow": 128000, "maxTokens": 8192 }],
+            "defaultModelId": "model-1"
+        });
+        if let Some(key) = api_key {
+            config["apiKey"] = json!(key);
+        }
+        config
+    }
+
+    /// Redirects `~/.omp/agent` resolution at a temp dir via PI_CODING_AGENT_DIR
+    /// and restores the env var on drop. `#[serial]` (shared with omp_config's
+    /// own tests) makes the env override race-free.
+    struct OmpDirGuard {
+        dir: TempDir,
+        original: Option<String>,
+    }
+
+    impl OmpDirGuard {
+        fn new() -> Self {
+            let dir = TempDir::new().expect("failed to create omp agent dir");
+            let original = env::var("PI_CODING_AGENT_DIR").ok();
+            env::set_var("PI_CODING_AGENT_DIR", dir.path());
+            Self { dir, original }
+        }
+    }
+
+    impl Drop for OmpDirGuard {
+        fn drop(&mut self) {
+            match &self.original {
+                Some(value) => env::set_var("PI_CODING_AGENT_DIR", value),
+                None => env::remove_var("PI_CODING_AGENT_DIR"),
+            }
+        }
+    }
+
+    fn read_omp_models_yml() -> Value {
+        let text = std::fs::read_to_string(crate::omp_config::get_omp_models_path())
+            .expect("read omp models.yml");
+        let yaml: serde_yaml::Value = serde_yaml::from_str(&text).expect("parse omp models.yml");
+        serde_json::to_value(yaml).expect("omp models.yml yaml to json")
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn omp_takeover_rewrites_selected_entry_and_restore_is_verbatim() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let _omp_dir = OmpDirGuard::new();
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+
+        let provider = Provider::with_id(
+            "anthropic".to_string(),
+            "Anthropic".to_string(),
+            omp_provider_config(
+                "https://api.anthropic.com",
+                Some("sk-ant"),
+                "anthropic-messages",
+            ),
+            None,
+        );
+        db.save_provider("omp", &provider).expect("save provider");
+        db.set_current_provider("omp", "anthropic")
+            .expect("set db current");
+        crate::settings::set_current_provider(&AppType::Omp, Some("anthropic"))
+            .expect("set local current");
+
+        crate::omp_config::upsert_and_select(
+            "anthropic",
+            provider.settings_config.clone(),
+            "default",
+        )
+        .expect("seed omp live");
+        let original_models = std::fs::read_to_string(crate::omp_config::get_omp_models_path())
+            .expect("read original models.yml");
+        let original_config = std::fs::read_to_string(crate::omp_config::get_omp_config_path())
+            .expect("read original config.yml");
+
+        service
+            .backup_live_config_strict(&AppType::Omp)
+            .await
+            .expect("backup omp live");
+        service
+            .takeover_live_config_strict(&AppType::Omp)
+            .await
+            .expect("takeover omp live");
+
+        let models = read_omp_models_yml();
+        let entry = &models["providers"]["anthropic"];
+        assert_eq!(
+            entry["baseUrl"].as_str().expect("base url"),
+            "http://127.0.0.1:15721/omp"
+        );
+        assert_eq!(
+            entry["apiKey"].as_str().expect("api key marker"),
+            PROXY_TOKEN_PLACEHOLDER
+        );
+        assert!(service.detect_takeover_in_live_config_for_app(&AppType::Omp));
+        // modelRoles stay untouched: the selector keeps pointing at the same
+        // provider key; only the entry's baseUrl/apiKey were rewritten.
+        let config_after = std::fs::read_to_string(crate::omp_config::get_omp_config_path())
+            .expect("read config.yml after takeover");
+        assert_eq!(
+            config_after, original_config,
+            "takeover must not touch config.yml (modelRoles)"
+        );
+
+        service
+            .restore_live_config_for_app_inner(&AppType::Omp)
+            .await
+            .expect("restore omp live");
+        let restored = std::fs::read_to_string(crate::omp_config::get_omp_models_path())
+            .expect("read restored models.yml");
+        assert_eq!(restored, original_models, "restore must be verbatim");
+        assert!(!service.detect_takeover_in_live_config_for_app(&AppType::Omp));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn omp_hot_switch_reverts_previous_entry_and_takes_over_new() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let _omp_dir = OmpDirGuard::new();
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+
+        let provider_a = Provider::with_id(
+            "a".to_string(),
+            "A".to_string(),
+            omp_provider_config("https://a.example.com", Some("sk-a"), "anthropic-messages"),
+            None,
+        );
+        let provider_b = Provider::with_id(
+            "b".to_string(),
+            "B".to_string(),
+            omp_provider_config(
+                "https://b.example.com/v1",
+                Some("sk-b"),
+                "openai-completions",
+            ),
+            None,
+        );
+        db.save_provider("omp", &provider_a).expect("save a");
+        db.save_provider("omp", &provider_b).expect("save b");
+        db.set_current_provider("omp", "a").expect("set db current");
+        crate::settings::set_current_provider(&AppType::Omp, Some("a")).expect("set local current");
+
+        crate::omp_config::upsert_and_select("a", provider_a.settings_config.clone(), "default")
+            .expect("seed a");
+        crate::omp_config::set_provider("b", provider_b.settings_config.clone()).expect("seed b");
+
+        service
+            .backup_live_config_strict(&AppType::Omp)
+            .await
+            .expect("backup");
+        service
+            .takeover_live_config_strict(&AppType::Omp)
+            .await
+            .expect("takeover");
+
+        service
+            .hot_switch_provider("omp", "b")
+            .await
+            .expect("hot switch to b");
+
+        // B carries the takeover fields; modelRoles are NOT touched by the
+        // takeover path (they still point at the previous provider key — role
+        // reassignment is the provider-switch flow's job, not the proxy's).
+        let config_yml: serde_yaml::Value = serde_yaml::from_str(
+            &std::fs::read_to_string(crate::omp_config::get_omp_config_path())
+                .expect("read config.yml"),
+        )
+        .expect("parse config.yml");
+        assert_eq!(
+            config_yml["modelRoles"]["default"].as_str().unwrap(),
+            "a/model-1"
+        );
+
+        let models = read_omp_models_yml();
+        let b_entry = &models["providers"]["b"];
+        assert_eq!(
+            b_entry["baseUrl"].as_str().unwrap(),
+            "http://127.0.0.1:15721/omp"
+        );
+        assert_eq!(b_entry["apiKey"].as_str().unwrap(), PROXY_TOKEN_PLACEHOLDER);
+        // A is reverted to its DB config (real baseUrl, no placeholder).
+        let a_entry = &models["providers"]["a"];
+        assert_eq!(
+            a_entry["baseUrl"].as_str().unwrap(),
+            "https://a.example.com"
+        );
+        assert!(
+            a_entry.get("apiKey").and_then(|v| v.as_str()) != Some(PROXY_TOKEN_PLACEHOLDER),
+            "previous entry must not keep the takeover marker"
+        );
+
+        // Logical current provider follows the switch.
+        assert_eq!(
+            crate::settings::get_effective_current_provider(&db, &AppType::Omp)
+                .expect("read current")
+                .as_deref(),
+            Some("b")
+        );
+
+        // The restore backup follows the switch: entries pristine, no markers.
+        let backup = db
+            .get_live_backup("omp")
+            .await
+            .expect("read backup")
+            .expect("backup exists");
+        let snapshot: Value =
+            serde_json::from_str(&backup.original_config).expect("parse backup snapshot");
+        let backup_source = snapshot["modelsSource"]
+            .as_str()
+            .expect("backup models source");
+        let backup_yaml: serde_yaml::Value =
+            serde_yaml::from_str(backup_source).expect("parse backup models");
+        let backup_models = serde_json::to_value(backup_yaml).expect("backup yaml to json");
+        assert_eq!(
+            backup_models["providers"]["b"]["baseUrl"].as_str().unwrap(),
+            "https://b.example.com/v1"
+        );
+        assert!(
+            !backup_source.contains(PROXY_TOKEN_PLACEHOLDER),
+            "backup must stay pristine (no takeover markers)"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn omp_takeover_rejects_provider_without_injectable_key() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let _omp_dir = OmpDirGuard::new();
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+
+        // OAuth-backed provider: the credential lives in Omp's agent.db (Omp
+        // owns it) and the DB row has no API key the proxy could inject.
+        let provider = Provider::with_id(
+            "oauth-prov".to_string(),
+            "OAuth".to_string(),
+            omp_provider_config("https://oauth.example.com", None, "anthropic-messages"),
+            None,
+        );
+        db.save_provider("omp", &provider).expect("save provider");
+        db.set_current_provider("omp", "oauth-prov")
+            .expect("set db current");
+        crate::settings::set_current_provider(&AppType::Omp, Some("oauth-prov"))
+            .expect("set local current");
+
+        crate::omp_config::upsert_and_select(
+            "oauth-prov",
+            provider.settings_config.clone(),
+            "default",
+        )
+        .expect("seed omp live");
+
+        let err = service
+            .takeover_live_config_strict(&AppType::Omp)
+            .await
+            .expect_err("oauth-only provider must be rejected");
+        assert!(
+            err.contains("API Key") || err.contains("API key"),
+            "error should explain the missing injectable key: {err}"
+        );
+
+        // Live config must be untouched by the failed takeover.
+        let models = read_omp_models_yml();
+        let entry = &models["providers"]["oauth-prov"];
+        assert_eq!(
+            entry["baseUrl"].as_str().unwrap(),
+            "https://oauth.example.com"
+        );
+        assert!(!service.detect_takeover_in_live_config_for_app(&AppType::Omp));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn omp_sync_live_token_skips_templates_and_placeholder() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let _omp_dir = OmpDirGuard::new();
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db.clone());
+
+        let provider = Provider::with_id(
+            "a".to_string(),
+            "A".to_string(),
+            omp_provider_config("https://a.example.com", None, "anthropic-messages"),
+            None,
+        );
+        db.save_provider("omp", &provider).expect("save provider");
+        // No CC Switch current: resolution falls back to the live default-role
+        // selector (seeded below).
+        crate::omp_config::upsert_and_select("a", provider.settings_config.clone(), "default")
+            .expect("seed omp live roles");
+
+        // Literal inline key is copied to the DB.
+        let snapshot = json!({
+            "modelsSource": "providers:\n  a:\n    apiKey: sk-live\n"
+        });
+        service
+            .sync_live_config_to_provider(&AppType::Omp, &snapshot)
+            .await
+            .expect("sync live token");
+        let updated = db
+            .get_provider_by_id("a", "omp")
+            .expect("read provider")
+            .expect("provider exists");
+        assert_eq!(updated.settings_config["apiKey"], "sk-live");
+
+        // Template-only credential → no DB write.
+        let snapshot = json!({
+            "modelsSource": "providers:\n  a:\n    apiKey: ${OMP_A_KEY}\n"
+        });
+        db.save_provider(
+            "omp",
+            &Provider::with_id(
+                "a".to_string(),
+                "A".to_string(),
+                omp_provider_config("https://a.example.com", None, "anthropic-messages"),
+                None,
+            ),
+        )
+        .expect("clear apiKey");
+        service
+            .sync_live_config_to_provider(&AppType::Omp, &snapshot)
+            .await
+            .expect("sync template-only");
+        let updated = db
+            .get_provider_by_id("a", "omp")
+            .expect("read provider")
+            .expect("provider exists");
+        assert!(
+            updated.settings_config.get("apiKey").is_none(),
+            "env templates must not be synced into the DB"
+        );
+
+        // Placeholder-only credential → no DB write.
+        let snapshot = json!({
+            "modelsSource": format!("providers:\n  a:\n    apiKey: {PROXY_TOKEN_PLACEHOLDER}\n")
+        });
+        service
+            .sync_live_config_to_provider(&AppType::Omp, &snapshot)
+            .await
+            .expect("sync placeholder-only");
+        let updated = db
+            .get_provider_by_id("a", "omp")
             .expect("read provider")
             .expect("provider exists");
         assert!(

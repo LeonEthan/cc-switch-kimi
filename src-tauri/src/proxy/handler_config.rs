@@ -193,6 +193,28 @@ pub const PI_CHAT_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
     app_type_str: "pi",
 };
 
+/// Omp `/omp/v1/messages` 解析配置（Anthropic Messages 协议）
+pub const OMP_MESSAGES_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
+    stream_parser: TokenUsage::from_claude_stream_events,
+    response_parser: TokenUsage::from_claude_response,
+    model_extractor: claude_model_extractor,
+    stream_event_filter: Some(claude_stream_usage_event_filter),
+    app_type_str: "omp",
+};
+
+/// Omp `/omp/v1/chat/completions` 解析配置（OpenAI Chat Completions 协议）。
+///
+/// 使用 fresh-input 解析变体：OpenAI 的 `prompt_tokens` 是 cache-inclusive，
+/// 而 Omp 的 session 行与 proxy 行统一按 FRESH 口径入库（"omp" 不在
+/// CACHE_INCLUSIVE_APP_TYPES），跨源去重指纹按存储值精确比较，必须同口径。
+pub const OMP_CHAT_PARSER_CONFIG: UsageParserConfig = UsageParserConfig {
+    stream_parser: TokenUsage::from_openai_stream_events_fresh,
+    response_parser: TokenUsage::from_openai_response_fresh,
+    model_extractor: openai_model_extractor,
+    stream_event_filter: Some(openai_stream_usage_event_filter),
+    app_type_str: "omp",
+};
+
 // ============================================================================
 // Handler 配置（预留，用于进一步简化）
 // ============================================================================

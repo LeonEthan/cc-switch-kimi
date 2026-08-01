@@ -101,6 +101,11 @@ pub fn sync_all_unlocked(db: &Database) -> SessionSyncResult {
         "Pi",
         crate::services::session_usage_pi::sync_pi_usage(db),
     );
+    merge_sync_step(
+        &mut result,
+        "Omp",
+        crate::services::session_usage_omp::sync_omp_usage(db),
+    );
     notify_sync_result(&result);
     result
 }

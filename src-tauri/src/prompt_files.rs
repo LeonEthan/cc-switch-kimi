@@ -28,6 +28,7 @@ pub fn prompt_file_path(app: &AppType) -> Result<PathBuf, AppError> {
         AppType::Hermes => crate::hermes_config::get_hermes_dir(),
         AppType::KimiCode => crate::kimi_code_config::get_kimi_code_dir(),
         AppType::Pi => crate::pi_config::get_pi_dir(),
+        AppType::Omp => crate::omp_config::get_omp_dir(),
         AppType::ClaudeDesktop => unreachable!("handled above"),
     };
 
@@ -40,7 +41,8 @@ pub fn prompt_file_path(app: &AppType) -> Result<PathBuf, AppError> {
         | AppType::OpenClaw
         | AppType::Hermes
         | AppType::KimiCode
-        | AppType::Pi => "AGENTS.md",
+        | AppType::Pi
+        | AppType::Omp => "AGENTS.md",
         AppType::ClaudeDesktop => unreachable!("handled above"),
     };
 

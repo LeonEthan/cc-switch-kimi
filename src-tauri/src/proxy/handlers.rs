@@ -13,7 +13,8 @@ use super::{
     forwarder::ActiveConnectionGuard,
     handler_config::{
         claude_stream_usage_event_filter, codex_stream_usage_event_filter, CLAUDE_PARSER_CONFIG,
-        CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OPENAI_PARSER_CONFIG, PI_CHAT_PARSER_CONFIG,
+        CODEX_PARSER_CONFIG, GEMINI_PARSER_CONFIG, OMP_CHAT_PARSER_CONFIG,
+        OMP_MESSAGES_PARSER_CONFIG, OPENAI_PARSER_CONFIG, PI_CHAT_PARSER_CONFIG,
         PI_MESSAGES_PARSER_CONFIG,
     },
     handler_context::RequestContext,
@@ -156,6 +157,29 @@ pub async fn handle_pi_messages(
         Some("/pi"),
         &PI_MESSAGES_PARSER_CONFIG,
         super::providers::pi_provider_supports_anthropic_messages,
+        "anthropic-messages",
+    )
+    .await
+}
+
+/// 处理 /omp/v1/messages 请求（omp CLI，Anthropic Messages 协议）
+///
+/// omp 的供应商是 per-provider 协议类型的：故障转移链里可能混有
+/// openai-completions 供应商，本路由只转发给 anthropic-messages 兼容的
+/// 供应商（协议不转换）。
+pub async fn handle_omp_messages(
+    State(state): State<ProxyState>,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    handle_messages_for_app_filtered(
+        state,
+        request,
+        AppType::Omp,
+        "Omp",
+        "omp",
+        Some("/omp"),
+        &OMP_MESSAGES_PARSER_CONFIG,
+        super::providers::omp_provider_supports_anthropic_messages,
         "anthropic-messages",
     )
     .await
@@ -787,6 +811,27 @@ pub async fn handle_pi_chat_completions(
         "pi",
         &PI_CHAT_PARSER_CONFIG,
         super::providers::pi_provider_supports_chat_completions,
+        "openai-completions",
+    )
+    .await
+}
+
+/// 处理 /omp/v1/chat/completions 请求（omp CLI，OpenAI Chat Completions 协议）
+///
+/// 与 [`handle_omp_messages`] 一样按协议过滤故障转移链：只转发给
+/// openai-completions 兼容的供应商。
+pub async fn handle_omp_chat_completions(
+    State(state): State<ProxyState>,
+    request: axum::extract::Request,
+) -> Result<axum::response::Response, ProxyError> {
+    handle_chat_completions_for_app(
+        state,
+        request,
+        AppType::Omp,
+        "Omp",
+        "omp",
+        &OMP_CHAT_PARSER_CONFIG,
+        super::providers::omp_provider_supports_chat_completions,
         "openai-completions",
     )
     .await

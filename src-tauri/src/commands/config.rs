@@ -152,6 +152,14 @@ pub async fn get_config_status(
 
             Ok(ConfigStatus { exists, path })
         }
+        AppType::Omp => {
+            let models_path = crate::omp_config::get_omp_models_path();
+            let config_path = crate::omp_config::get_omp_config_path();
+            let exists = models_path.exists() || config_path.exists();
+            let path = crate::omp_config::get_omp_dir().to_string_lossy().to_string();
+
+            Ok(ConfigStatus { exists, path })
+        }
     }
 }
 
@@ -175,6 +183,7 @@ pub async fn get_config_dir(app: String) -> Result<String, String> {
         AppType::Hermes => crate::hermes_config::get_hermes_dir(),
         AppType::KimiCode => crate::kimi_code_config::get_kimi_code_dir(),
         AppType::Pi => crate::pi_config::get_pi_dir(),
+        AppType::Omp => crate::omp_config::get_omp_dir(),
     };
 
     Ok(dir.to_string_lossy().to_string())
@@ -195,6 +204,7 @@ pub async fn open_config_folder(handle: AppHandle, app: String) -> Result<bool, 
         AppType::Hermes => crate::hermes_config::get_hermes_dir(),
         AppType::KimiCode => crate::kimi_code_config::get_kimi_code_dir(),
         AppType::Pi => crate::pi_config::get_pi_dir(),
+        AppType::Omp => crate::omp_config::get_omp_dir(),
     };
 
     if !config_dir.exists() {

@@ -178,6 +178,7 @@ fn app_type_ignores_common_config_snippet(app_type: &AppType) -> bool {
             | AppType::Hermes
             | AppType::KimiCode
             | AppType::Pi
+            | AppType::Omp
             | AppType::ClaudeDesktop
     )
 }
@@ -209,6 +210,9 @@ pub(crate) fn provider_exists_in_live_config(
             .map(|providers| providers.contains_key(provider_id)),
         AppType::Pi => {
             crate::pi_config::get_providers().map(|providers| providers.contains_key(provider_id))
+        }
+        AppType::Omp => {
+            crate::omp_config::get_providers().map(|providers| providers.contains_key(provider_id))
         }
         _ => Ok(false),
     }
@@ -630,7 +634,8 @@ pub(crate) fn remove_common_config_from_settings(
         | AppType::KimiCode
         | AppType::OpenClaw
         | AppType::OpenCode
-        | AppType::Pi => Ok(settings.clone()),
+        | AppType::Pi
+        | AppType::Omp => Ok(settings.clone()),
     }
 }
 
@@ -1205,6 +1210,10 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
             crate::pi_config::set_provider(&provider.id, provider.settings_config.clone())?;
             log::debug!("Pi provider '{}' written to live config", provider.id);
         }
+        AppType::Omp => {
+            crate::omp_config::set_provider(&provider.id, provider.settings_config.clone())?;
+            log::debug!("Omp provider '{}' written to live config", provider.id);
+        }
     }
     Ok(())
 }
@@ -1214,11 +1223,11 @@ pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Re
 /// Writes all providers from the database to the live configuration file.
 /// Used for OpenCode and other additive mode applications.
 fn sync_all_providers_to_live(state: &AppState, app_type: &AppType) -> Result<(), AppError> {
-    // Pi under proxy takeover: the live file is proxy-owned (entries rewritten
+    // Pi/Omp under proxy takeover: the live file is proxy-owned (entries rewritten
     // to the local proxy URL). Bulk-syncing DB providers here would clobber the
     // takeover fields; the restore backup is the source of truth until takeover
     // ends.
-    if matches!(app_type, AppType::Pi) {
+    if matches!(app_type, AppType::Pi | AppType::Omp) {
         let has_live_backup =
             futures::executor::block_on(state.db.get_live_backup(app_type.as_str()))
                 .ok()
@@ -1228,7 +1237,10 @@ fn sync_all_providers_to_live(state: &AppState, app_type: &AppType) -> Result<()
             .proxy_service
             .detect_takeover_in_live_config_for_app(app_type);
         if has_live_backup || live_taken_over {
-            log::info!("Pi 处于代理接管状态，跳过批量同步 live（恢复备份为准）");
+            log::info!(
+                "{:?} 处于代理接管状态，跳过批量同步 live（恢复备份为准）",
+                app_type
+            );
             return Ok(());
         }
     }
@@ -1502,6 +1514,18 @@ pub fn read_live_settings(app_type: AppType) -> Result<Value, AppError> {
             }
             crate::pi_config::read_live_settings()
         }
+        AppType::Omp => {
+            let models_path = crate::omp_config::get_omp_models_path();
+            let config_path = crate::omp_config::get_omp_config_path();
+            if !models_path.exists() && !config_path.exists() {
+                return Err(AppError::localized(
+                    "omp.config.missing",
+                    "Omp 配置文件不存在",
+                    "Omp configuration file not found",
+                ));
+            }
+            crate::omp_config::read_live_settings()
+        }
     }
 }
 
@@ -1615,7 +1639,8 @@ pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool
         | AppType::OpenClaw
         | AppType::Hermes
         | AppType::KimiCode
-        | AppType::Pi => {
+        | AppType::Pi
+        | AppType::Omp => {
             unreachable!("additive mode apps are handled by early return")
         }
     };
@@ -1838,6 +1863,18 @@ pub(crate) fn remove_additive_provider_from_live(
             }
             pi_config::remove_provider(provider_id)?;
             log::info!("Pi provider '{provider_id}' removed from live config");
+            Ok(())
+        }
+        AppType::Omp => {
+            use crate::omp_config;
+            if !omp_config::get_omp_dir().exists() {
+                log::debug!(
+                    "Omp config directory doesn't exist, skipping removal of '{provider_id}'"
+                );
+                return Ok(());
+            }
+            omp_config::remove_provider(provider_id)?;
+            log::info!("Omp provider '{provider_id}' removed from live config");
             Ok(())
         }
         _ => Ok(()),
@@ -2136,6 +2173,26 @@ pub fn import_pi_providers_from_live(state: &AppState) -> Result<usize, AppError
     let providers = pi_config::get_providers()?;
     import_additive_map_providers_from_live(state, "pi", providers, |name| {
         pi_config::is_managed_provider_id(name) || pi_config::provider_has_oauth_credential(name)
+    })
+}
+
+/// Import all providers from Omp live config (models.yml) to database.
+///
+/// Managed (`_ccSource: managed`) and OAuth-credential providers are imported
+/// read-only: Omp owns their credentials (OAuth lives in agent.db and is never
+/// written by CC Switch).
+pub fn import_omp_providers_from_live(state: &AppState) -> Result<usize, AppError> {
+    use crate::omp_config;
+    let providers = omp_config::get_providers()?;
+    // Managed status lives on the entry (`_ccSource` field), not the provider
+    // key (unlike Pi's "managed:" id prefix), so precompute it per name.
+    let managed: std::collections::HashSet<String> = providers
+        .iter()
+        .filter(|(_, entry)| omp_config::is_managed_provider(entry))
+        .map(|(name, _)| name.clone())
+        .collect();
+    import_additive_map_providers_from_live(state, "omp", providers, |name| {
+        managed.contains(name) || omp_config::provider_has_oauth_credential(name)
     })
 }
 

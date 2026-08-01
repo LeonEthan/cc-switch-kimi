@@ -100,6 +100,7 @@ impl Database {
             enabled_hermes BOOLEAN NOT NULL DEFAULT 0,
             enabled_kimicode BOOLEAN NOT NULL DEFAULT 0,
             enabled_pi BOOLEAN NOT NULL DEFAULT 0,
+            enabled_omp BOOLEAN NOT NULL DEFAULT 0,
             installed_at INTEGER NOT NULL DEFAULT 0,
             content_hash TEXT,
             updated_at INTEGER NOT NULL DEFAULT 0
@@ -127,7 +128,7 @@ impl Database {
 
         // 8. Proxy Config 表（三行结构，app_type 主键）
         conn.execute("CREATE TABLE IF NOT EXISTS proxy_config (
-            app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','codex','gemini','grokbuild','pi')),
+            app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','codex','gemini','grokbuild','pi','omp')),
             proxy_enabled INTEGER NOT NULL DEFAULT 0, listen_address TEXT NOT NULL DEFAULT '127.0.0.1',
             listen_port INTEGER NOT NULL DEFAULT 15721, enable_logging INTEGER NOT NULL DEFAULT 1,
             enabled INTEGER NOT NULL DEFAULT 0, auto_failover_enabled INTEGER NOT NULL DEFAULT 0,
@@ -189,6 +190,15 @@ impl Database {
                 circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
                 circuit_error_rate_threshold, circuit_min_requests)
                 VALUES ('pi', 3, 60, 120, 600, 4, 2, 60, 0.6, 10)",
+                [],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+            conn.execute(
+                "INSERT OR IGNORE INTO proxy_config (app_type, max_retries,
+                streaming_first_byte_timeout, streaming_idle_timeout, non_streaming_timeout,
+                circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
+                circuit_error_rate_threshold, circuit_min_requests)
+                VALUES ('omp', 3, 60, 120, 600, 4, 2, 60, 0.6, 10)",
                 [],
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -532,6 +542,11 @@ impl Database {
                         log::info!("迁移数据库从 v17 到 v18（Skills/代理 添加 Pi 支持）");
                         Self::migrate_v17_to_v18(conn)?;
                         Self::set_user_version(conn, 18)?;
+                    }
+                    18 => {
+                        log::info!("迁移数据库从 v18 到 v19（Skills/代理 添加 Omp 支持）");
+                        Self::migrate_v18_to_v19(conn)?;
+                        Self::set_user_version(conn, 19)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1721,6 +1736,136 @@ impl Database {
                 circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
                 circuit_error_rate_threshold, circuit_min_requests)
             VALUES ('pi', 3, 60, 120, 600, 4, 2, 60, 0.6, 10)",
+            [],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// v18 -> v19: first-class Omp support.
+    ///
+    /// 1. `skills.enabled_omp` column (Omp implements the Agent Skills standard).
+    /// 2. Rebuild `proxy_config` so the `app_type` CHECK accepts 'omp'
+    ///    (SQLite cannot ALTER a CHECK constraint; table rebuild required),
+    ///    then seed the Omp proxy row.
+    fn migrate_v18_to_v19(conn: &Connection) -> Result<(), AppError> {
+        if Self::table_exists(conn, "skills")? {
+            Self::add_column_if_missing(
+                conn,
+                "skills",
+                "enabled_omp",
+                "BOOLEAN NOT NULL DEFAULT 0",
+            )?;
+        }
+
+        if Self::table_exists(conn, "proxy_config")? {
+            // Same guard as v17 -> v18: a newer-shaped proxy_config already
+            // admits 'omp'; only ensure the seed row exists.
+            if Self::proxy_config_check_includes(conn, "'omp'")? {
+                Self::seed_omp_proxy_config_row(conn)?;
+                return Ok(());
+            }
+
+            conn.execute("DROP TABLE IF EXISTS proxy_config_v19", [])
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            conn.execute(
+                "CREATE TABLE proxy_config_v19 (
+                    app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','codex','gemini','grokbuild','pi','omp')),
+                    proxy_enabled INTEGER NOT NULL DEFAULT 0,
+                    listen_address TEXT NOT NULL DEFAULT '127.0.0.1',
+                    listen_port INTEGER NOT NULL DEFAULT 15721,
+                    enable_logging INTEGER NOT NULL DEFAULT 1,
+                    enabled INTEGER NOT NULL DEFAULT 0,
+                    auto_failover_enabled INTEGER NOT NULL DEFAULT 0,
+                    max_retries INTEGER NOT NULL DEFAULT 3,
+                    streaming_first_byte_timeout INTEGER NOT NULL DEFAULT 60,
+                    streaming_idle_timeout INTEGER NOT NULL DEFAULT 120,
+                    non_streaming_timeout INTEGER NOT NULL DEFAULT 600,
+                    circuit_failure_threshold INTEGER NOT NULL DEFAULT 4,
+                    circuit_success_threshold INTEGER NOT NULL DEFAULT 2,
+                    circuit_timeout_seconds INTEGER NOT NULL DEFAULT 60,
+                    circuit_error_rate_threshold REAL NOT NULL DEFAULT 0.6,
+                    circuit_min_requests INTEGER NOT NULL DEFAULT 10,
+                    default_cost_multiplier TEXT NOT NULL DEFAULT '1',
+                    pricing_model_source TEXT NOT NULL DEFAULT 'response',
+                    live_takeover_active INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )",
+                [],
+            )
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+            let copied_columns = [
+                ("app_type", "'claude'"),
+                ("proxy_enabled", "0"),
+                ("listen_address", "'127.0.0.1'"),
+                ("listen_port", "15721"),
+                ("enable_logging", "1"),
+                ("enabled", "0"),
+                ("auto_failover_enabled", "0"),
+                ("max_retries", "3"),
+                ("streaming_first_byte_timeout", "60"),
+                ("streaming_idle_timeout", "120"),
+                ("non_streaming_timeout", "600"),
+                ("circuit_failure_threshold", "4"),
+                ("circuit_success_threshold", "2"),
+                ("circuit_timeout_seconds", "60"),
+                ("circuit_error_rate_threshold", "0.6"),
+                ("circuit_min_requests", "10"),
+                ("default_cost_multiplier", "'1'"),
+                ("pricing_model_source", "'response'"),
+                ("live_takeover_active", "0"),
+                ("created_at", "datetime('now')"),
+                ("updated_at", "datetime('now')"),
+            ]
+            .into_iter()
+            .map(|(column, fallback)| {
+                Self::has_column(conn, "proxy_config", column).map(|exists| {
+                    if exists {
+                        format!("\"{column}\"")
+                    } else {
+                        fallback.into()
+                    }
+                })
+            })
+            .collect::<Result<Vec<_>, AppError>>()?
+            .join(", ");
+
+            let copy_sql = format!(
+                "INSERT INTO proxy_config_v19 (
+                    app_type, proxy_enabled, listen_address, listen_port, enable_logging,
+                    enabled, auto_failover_enabled, max_retries,
+                    streaming_first_byte_timeout, streaming_idle_timeout, non_streaming_timeout,
+                    circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
+                    circuit_error_rate_threshold, circuit_min_requests,
+                    default_cost_multiplier, pricing_model_source, live_takeover_active,
+                    created_at, updated_at
+                )
+                SELECT {copied_columns} FROM proxy_config"
+            );
+            conn.execute(&copy_sql, [])
+                .map_err(|e| AppError::Database(e.to_string()))?;
+
+            conn.execute("DROP TABLE proxy_config", [])
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            conn.execute("ALTER TABLE proxy_config_v19 RENAME TO proxy_config", [])
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            Self::seed_omp_proxy_config_row(conn)?;
+        }
+
+        log::info!("v18 -> v19 迁移完成：已添加 Omp 支持");
+        Ok(())
+    }
+
+    /// Seed Omp's proxy_config row (Codex-class defaults). Idempotent.
+    fn seed_omp_proxy_config_row(conn: &Connection) -> Result<(), AppError> {
+        conn.execute(
+            "INSERT OR IGNORE INTO proxy_config (app_type, max_retries,
+                streaming_first_byte_timeout, streaming_idle_timeout, non_streaming_timeout,
+                circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
+                circuit_error_rate_threshold, circuit_min_requests)
+            VALUES ('omp', 3, 60, 120, 600, 4, 2, 60, 0.6, 10)",
             [],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
@@ -3295,6 +3440,124 @@ mod tests {
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )?;
         assert_eq!(counts, (0, 1, 0, 1));
+        Ok(())
+    }
+
+    #[test]
+    fn fresh_install_v19_includes_omp_proxy_row_and_skill_flag() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        Database::create_tables_on_conn(&conn)?;
+
+        let ddl: String = conn.query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'proxy_config'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert!(ddl.contains("'omp'"));
+        assert!(Database::has_column(&conn, "skills", "enabled_omp")?);
+        let omp_rows: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM proxy_config WHERE app_type = 'omp'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(omp_rows, 1);
+        let omp_values: (i64, i64) = conn.query_row(
+            "SELECT max_retries, streaming_idle_timeout FROM proxy_config WHERE app_type = 'omp'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(omp_values, (3, 120));
+
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v18_to_v19_adds_omp_proxy_row_and_preserves_values() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE skills (
+                id TEXT PRIMARY KEY,
+                enabled_pi BOOLEAN NOT NULL DEFAULT 0
+            );
+            CREATE TABLE proxy_config (
+                app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','codex','gemini','grokbuild','pi')),
+                proxy_enabled INTEGER NOT NULL DEFAULT 0,
+                listen_address TEXT NOT NULL DEFAULT '127.0.0.1',
+                listen_port INTEGER NOT NULL DEFAULT 15721,
+                enable_logging INTEGER NOT NULL DEFAULT 1,
+                enabled INTEGER NOT NULL DEFAULT 0,
+                auto_failover_enabled INTEGER NOT NULL DEFAULT 0,
+                max_retries INTEGER NOT NULL DEFAULT 3,
+                streaming_first_byte_timeout INTEGER NOT NULL DEFAULT 60,
+                streaming_idle_timeout INTEGER NOT NULL DEFAULT 120,
+                non_streaming_timeout INTEGER NOT NULL DEFAULT 600,
+                circuit_failure_threshold INTEGER NOT NULL DEFAULT 4,
+                circuit_success_threshold INTEGER NOT NULL DEFAULT 2,
+                circuit_timeout_seconds INTEGER NOT NULL DEFAULT 60,
+                circuit_error_rate_threshold REAL NOT NULL DEFAULT 0.6,
+                circuit_min_requests INTEGER NOT NULL DEFAULT 10,
+                default_cost_multiplier TEXT NOT NULL DEFAULT '1',
+                pricing_model_source TEXT NOT NULL DEFAULT 'response',
+                live_takeover_active INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );",
+        )?;
+        conn.execute(
+            "INSERT INTO proxy_config (app_type, enabled, max_retries) VALUES ('codex', 1, 9)",
+            [],
+        )?;
+        conn.execute(
+            "INSERT INTO skills (id, enabled_pi) VALUES ('skill-1', 1)",
+            [],
+        )?;
+        Database::set_user_version(&conn, 18)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        assert!(Database::has_column(&conn, "skills", "enabled_omp")?);
+        let omp_rows: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM proxy_config WHERE app_type = 'omp'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(omp_rows, 1);
+        let codex_values: (i64, i64) = conn.query_row(
+            "SELECT enabled, max_retries FROM proxy_config WHERE app_type = 'codex'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(codex_values, (1, 9));
+        let skill_values: (i64, i64) = conn.query_row(
+            "SELECT enabled_pi, enabled_omp FROM skills WHERE id = 'skill-1'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(skill_values, (1, 0));
+
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v18_to_v19_is_idempotent_when_replayed() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        Database::create_tables_on_conn(&conn)?;
+        Database::set_user_version(&conn, 18)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+        // Replay the v18 -> v19 arm on an already-migrated (v19-shaped) database.
+        Database::set_user_version(&conn, 18)?;
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        let omp_rows: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM proxy_config WHERE app_type = 'omp'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(omp_rows, 1);
+
         Ok(())
     }
 }

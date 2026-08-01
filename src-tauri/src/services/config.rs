@@ -144,6 +144,9 @@ impl ConfigService {
             AppType::Pi => {
                 // Pi uses additive mode, no live sync needed
             }
+            AppType::Omp => {
+                // Omp uses additive mode, no live sync needed
+            }
         }
 
         Ok(())

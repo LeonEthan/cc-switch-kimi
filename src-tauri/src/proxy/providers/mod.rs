@@ -25,6 +25,7 @@ mod gemini;
 pub(crate) mod gemini_schema;
 pub mod gemini_shadow;
 pub mod models;
+mod omp;
 mod pi;
 pub(crate) mod reasoning_bridge;
 pub mod streaming;
@@ -65,6 +66,9 @@ pub use codex::{
     should_convert_codex_responses_to_chat,
 };
 pub use gemini::GeminiAdapter;
+pub use omp::{
+    omp_provider_supports_anthropic_messages, omp_provider_supports_chat_completions, OmpAdapter,
+};
 pub use pi::{
     pi_provider_supports_anthropic_messages, pi_provider_supports_chat_completions, PiAdapter,
 };
@@ -221,6 +225,9 @@ impl ProviderType {
             // per provider config. This arm is only a placeholder for the
             // legacy ProviderType inference path.
             AppType::Pi => ProviderType::Codex,
+            // Omp mirrors Pi: proxy-managed via the /omp namespace with
+            // per-provider protocol typing; placeholder arm only.
+            AppType::Omp => ProviderType::Codex,
         }
     }
 
@@ -282,6 +289,9 @@ pub fn get_adapter(app_type: &AppType) -> Box<dyn ProviderAdapter> {
         // resolves base URL / auth style per provider protocol type
         // (anthropic-messages vs openai-completions).
         AppType::Pi => Box::new(PiAdapter::new()),
+        // Omp mirrors Pi: proxy-managed via the /omp namespace, per-provider
+        // protocol-typed (settings_config.api).
+        AppType::Omp => Box::new(OmpAdapter::new()),
     }
 }
 

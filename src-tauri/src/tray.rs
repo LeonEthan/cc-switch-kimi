@@ -156,7 +156,7 @@ pub struct TrayAppSection {
 pub const AUTO_SUFFIX: &str = "auto";
 pub const TRAY_ID: &str = "cc-switch";
 
-pub const TRAY_SECTIONS: [TrayAppSection; 5] = [
+pub const TRAY_SECTIONS: [TrayAppSection; 6] = [
     TrayAppSection {
         app_type: AppType::Claude,
         prefix: "claude_",
@@ -191,6 +191,13 @@ pub const TRAY_SECTIONS: [TrayAppSection; 5] = [
         empty_id: "pi_empty",
         header_label: "Pi",
         log_name: "Pi",
+    },
+    TrayAppSection {
+        app_type: AppType::Omp,
+        prefix: "omp_",
+        empty_id: "omp_empty",
+        header_label: "Omp",
+        log_name: "Omp",
     },
 ];
 
@@ -1222,6 +1229,18 @@ mod tests {
         assert_eq!(section.prefix, "pi_");
         assert_eq!(section.empty_id, "pi_empty");
         assert_eq!(section.header_label, "Pi");
+    }
+
+    #[test]
+    fn tray_sections_include_omp_provider_switching() {
+        let section = TRAY_SECTIONS
+            .iter()
+            .find(|section| section.app_type == AppType::Omp)
+            .expect("Omp tray section should exist");
+
+        assert_eq!(section.prefix, "omp_");
+        assert_eq!(section.empty_id, "omp_empty");
+        assert_eq!(section.header_label, "Omp");
     }
 
     fn make_quota(tool: &str, success: bool, tiers: Vec<QuotaTier>) -> SubscriptionQuota {

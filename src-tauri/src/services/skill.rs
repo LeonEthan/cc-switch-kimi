@@ -541,6 +541,11 @@ impl SkillService {
                     return Ok(custom.join("skills"));
                 }
             }
+            AppType::Omp => {
+                if let Some(custom) = crate::settings::get_omp_override_dir() {
+                    return Ok(custom.join("skills"));
+                }
+            }
         }
 
         // 默认路径：回退到用户主目录下的标准位置。
@@ -559,6 +564,7 @@ impl SkillService {
             AppType::Hermes => crate::hermes_config::get_hermes_dir().join("skills"),
             AppType::KimiCode => crate::kimi_code_config::get_kimi_code_skills_dir(),
             AppType::Pi => crate::pi_config::get_pi_skills_dir(),
+            AppType::Omp => crate::omp_config::get_omp_skills_dir(),
         })
     }
 

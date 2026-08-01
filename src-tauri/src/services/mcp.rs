@@ -161,6 +161,10 @@ impl McpService {
                 // Pi has no native MCP support (extensions only), skip
                 log::debug!("Pi has no native MCP support, skipping sync");
             }
+            AppType::Omp => {
+                // Omp has no native MCP support, skip
+                log::debug!("Omp has no native MCP support, skipping sync");
+            }
         }
         Ok(())
     }
@@ -203,6 +207,10 @@ impl McpService {
             AppType::Pi => {
                 // Pi has no native MCP support (extensions only), skip
                 log::debug!("Pi has no native MCP support, skipping remove");
+            }
+            AppType::Omp => {
+                // Omp has no native MCP support, skip
+                log::debug!("Omp has no native MCP support, skipping remove");
             }
         }
         Ok(())
