@@ -150,6 +150,8 @@
     "managedByKimiCodeHint": "Kimi Code OAuth によって管理されています。CLI で /login を使用して変更してください",
     "managedByPi": "Pi 管理",
     "managedByPiHint": "Pi によって管理されています（OAuth は Pi が所有）。Pi で /login を使用して変更してください",
+    "managedByOmp": "Omp 管理",
+    "managedByOmpHint": "Omp によって管理されています（OAuth は Omp が所有）。Omp で /login を使用して変更してください",
     "openTerminal": "ターミナルを開く",
     "terminalOpened": "ターミナルを開きました",
     "terminalOpenFailed": "ターミナルを開けませんでした",
@@ -880,8 +882,10 @@
     "saveFailedGeneric": "保存に失敗しました。もう一度お試しください",
     "kimiCodeConfigDir": "Kimi Code 設定ディレクトリ",
     "piConfigDir": "Pi 設定ディレクトリ",
+    "ompConfigDir": "Omp 設定ディレクトリ",
     "browsePlaceholderKimiCode": "~/.kimi-code",
-    "browsePlaceholderPi": "~/.pi/agent"
+    "browsePlaceholderPi": "~/.pi/agent",
+    "browsePlaceholderOmp": "~/.omp/agent"
   },
   "apps": {
     "claude": "Claude",
@@ -895,7 +899,8 @@
     "openclaw": "OpenClaw",
     "hermes": "Hermes",
     "kimicode": "Kimi Code",
-    "pi": "Pi"
+    "pi": "Pi",
+    "omp": "Omp"
   },
   "grokBuild": {
     "apiBackend": "API Backend",
@@ -1515,7 +1520,8 @@
       "opencode": "OpenCode",
       "grokbuild": "Grok Build",
       "kimicode": "Kimi Code",
-      "pi": "Pi"
+      "pi": "Pi",
+      "omp": "Omp"
     },
     "rawInputLabel": "原始",
     "dataSources": "データソース",
@@ -1528,7 +1534,8 @@
       "opencode_session": "OpenCode セッション",
       "grok_session": "Grok Build セッション",
       "kimicode_session": "Kimi Code セッション",
-      "pi_session": "Pi セッション"
+      "pi_session": "Pi セッション",
+      "omp_session": "Omp セッション"
     },
     "sessionSync": {
       "trigger": "セッションログを同期",
@@ -3066,6 +3073,44 @@
       "defaultModel": "デフォルトモデル",
       "selectModel": "モデルを選択",
       "defaultModelHint": "このプロバイダーを有効にすると settings.json の defaultModel に書き込まれます"
+    }
+  },
+  "omp": {
+    "form": {
+      "providerKey": "プロバイダーキー",
+      "providerKeyHint": "~/.omp/agent/models.yml の providers.<key> に対応",
+      "providerKeyRequired": "プロバイダーキーを入力してください",
+      "providerKeyInvalid": "無効な形式です。小文字、数字、ハイフンのみ使用できます",
+      "providerKeyDuplicate": "このキーは既に使用されています",
+      "api": "API プロトコル",
+      "apiHint": "models.yml のプロバイダーの api フィールドに書き込まれます",
+      "baseUrl": "Base URL",
+      "models": "モデル",
+      "modelId": "モデル ID",
+      "modelName": "表示名",
+      "contextWindow": "コンテキストウィンドウ",
+      "maxTokens": "最大出力トークン",
+      "defaultModel": "デフォルトモデル",
+      "selectModel": "モデルを選択",
+      "defaultModelHint": "ロール割り当て時に modelRoles セレクターのモデルとして使用されます",
+      "authHeader": "API キーを Authorization: Bearer ヘッダーで送信（authHeader）"
+    },
+    "roles": {
+      "default": "default",
+      "defaultHint": "メインモデル",
+      "smol": "smol",
+      "smolHint": "軽量・高速タスク",
+      "slow": "slow",
+      "slowHint": "バックグラウンド/低コストタスク",
+      "plan": "plan",
+      "planHint": "プランニング",
+      "commit": "commit",
+      "commitHint": "コミットメッセージ生成"
+    },
+    "actions": {
+      "assignRole": "ロールを割り当て…",
+      "assigned": "{{count}} 個のロールを有効化",
+      "clearRole": "ロールを解除"
     }
   }
 }

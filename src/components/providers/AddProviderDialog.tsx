@@ -297,6 +297,12 @@ export function AddProviderDialog({
           } else if (parsedConfig.base_url) {
             addUrl(parsedConfig.base_url as string);
           }
+        } else if (appId === "omp") {
+          if (parsedConfig.baseUrl) {
+            addUrl(parsedConfig.baseUrl as string);
+          } else if (parsedConfig.base_url) {
+            addUrl(parsedConfig.base_url as string);
+          }
         }
 
         const urls = Array.from(urlSet);

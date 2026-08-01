@@ -74,6 +74,7 @@ export function ProxyPanel({
   const { data: geminiQueue = [] } = useFailoverQueue("gemini");
   const { data: grokQueue = [] } = useFailoverQueue("grokbuild");
   const { data: piQueue = [] } = useFailoverQueue("pi");
+  const { data: ompQueue = [] } = useFailoverQueue("omp");
 
   const handleTakeoverChange = async (appType: string, enabled: boolean) => {
     try {
@@ -276,7 +277,14 @@ export function ProxyPanel({
                 </p>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   {(
-                    ["claude", "codex", "gemini", "grokbuild", "pi"] as const
+                    [
+                      "claude",
+                      "codex",
+                      "gemini",
+                      "grokbuild",
+                      "pi",
+                      "omp",
+                    ] as const
                   ).map((appType) => {
                     const isEnabled =
                       takeoverStatus?.[
@@ -292,7 +300,9 @@ export function ProxyPanel({
                             ? "Grok Build"
                             : appType === "pi"
                               ? "Pi"
-                              : appType}
+                              : appType === "omp"
+                                ? "Omp"
+                                : appType}
                         </span>
                         <Switch
                           checked={isEnabled}
@@ -425,7 +435,8 @@ export function ProxyPanel({
                 codexQueue.length > 0 ||
                 geminiQueue.length > 0 ||
                 grokQueue.length > 0 ||
-                piQueue.length > 0) && (
+                piQueue.length > 0 ||
+                ompQueue.length > 0) && (
                 <div className="pt-3 border-t border-border space-y-3">
                   <div className="flex items-center gap-2">
                     <ListOrdered className="h-3.5 w-3.5 text-muted-foreground" />
@@ -487,6 +498,18 @@ export function ProxyPanel({
                       appType="pi"
                       appLabel="Pi"
                       targets={piQueue.map((item) => ({
+                        id: item.providerId,
+                        name: item.providerName,
+                      }))}
+                      status={status}
+                    />
+                  )}
+
+                  {ompQueue.length > 0 && (
+                    <ProviderQueueGroup
+                      appType="omp"
+                      appLabel="Omp"
+                      targets={ompQueue.map((item) => ({
                         id: item.providerId,
                         name: item.providerName,
                       }))}

@@ -32,6 +32,7 @@ const APP_CONFIG: Array<{
   { id: "hermes", icon: "hermes", nameKey: "apps.hermes" },
   { id: "kimicode", icon: "kimi", nameKey: "apps.kimicode" },
   { id: "pi", icon: "pi", nameKey: "apps.pi" },
+  { id: "omp", icon: "omp", nameKey: "apps.omp" },
 ];
 
 export function AppVisibilitySettings({
@@ -50,8 +51,9 @@ export function AppVisibilitySettings({
     openclaw: true,
     hermes: true,
     kimicode: true,
-    // 与后端 VisibleApps::default 一致：Pi 默认不显示，需要时在设置中开启。
+    // 与后端 VisibleApps::default 一致：Pi/Omp 默认不显示，需要时在设置中开启。
     pi: false,
+    omp: false,
   };
 
   // Count how many apps are currently visible

@@ -1,0 +1,381 @@
+import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { Download, Loader2, Plus, Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import type { OmpModel, OmpProviderType } from "@/config/ompProviderPresets";
+import { ompProviderTypeOptions } from "@/config/ompProviderPresets";
+import { ApiKeySection } from "./shared/ApiKeySection";
+import { ModelDropdown } from "./shared/ModelDropdown";
+import {
+  fetchModelsForConfig,
+  showFetchModelsError,
+  type FetchedModel,
+} from "@/lib/api/model-fetch";
+import { normalizeAdditiveProviderKey } from "./helpers/additiveProviderKey";
+
+interface OmpFormFieldsProps {
+  providerKey: string;
+  onProviderKeyChange: (value: string) => void;
+  providerKeyDisabled?: boolean;
+  providerType: OmpProviderType;
+  onProviderTypeChange: (value: OmpProviderType) => void;
+  baseUrl: string;
+  onBaseUrlChange: (value: string) => void;
+  apiKey: string;
+  onApiKeyChange: (value: string) => void;
+  authHeader: boolean;
+  onAuthHeaderChange: (value: boolean) => void;
+  shouldShowApiKeyLink?: boolean;
+  websiteUrl?: string;
+  isPartner?: boolean;
+  partnerPromotionKey?: string;
+  models: OmpModel[];
+  onModelsChange: (models: OmpModel[]) => void;
+  defaultModelId: string;
+  onDefaultModelIdChange: (value: string) => void;
+  readOnly?: boolean;
+}
+
+export function OmpFormFields({
+  providerKey,
+  onProviderKeyChange,
+  providerKeyDisabled,
+  providerType,
+  onProviderTypeChange,
+  baseUrl,
+  onBaseUrlChange,
+  apiKey,
+  onApiKeyChange,
+  authHeader,
+  onAuthHeaderChange,
+  shouldShowApiKeyLink,
+  websiteUrl,
+  isPartner,
+  partnerPromotionKey,
+  models,
+  onModelsChange,
+  defaultModelId,
+  onDefaultModelIdChange,
+  readOnly,
+}: OmpFormFieldsProps) {
+  const { t } = useTranslation();
+  const disabled = !!readOnly;
+
+  const [fetchedModels, setFetchedModels] = useState<FetchedModel[]>([]);
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
+
+  const handleFetchModels = useCallback(() => {
+    if (!baseUrl || !apiKey) {
+      showFetchModelsError(null, t, {
+        hasApiKey: !!apiKey,
+        hasBaseUrl: !!baseUrl,
+      });
+      return;
+    }
+    setIsFetchingModels(true);
+    fetchModelsForConfig(baseUrl.trim(), apiKey.trim())
+      .then((list) => {
+        setFetchedModels(list);
+        if (list.length === 0) {
+          toast.info(t("providerForm.fetchModelsEmpty"));
+        } else {
+          toast.success(
+            t("providerForm.fetchModelsSuccess", { count: list.length }),
+          );
+        }
+      })
+      .catch((err) => {
+        console.warn("[ModelFetch] Failed:", err);
+        showFetchModelsError(err, t);
+      })
+      .finally(() => setIsFetchingModels(false));
+  }, [baseUrl, apiKey, t]);
+
+  const updateModel = (index: number, patch: Partial<OmpModel>) => {
+    const next = models.map((m, i) => (i === index ? { ...m, ...patch } : m));
+    onModelsChange(next);
+  };
+
+  const addModel = () => {
+    onModelsChange([
+      ...models,
+      {
+        id: "",
+        name: "",
+        contextWindow: 262144,
+        maxTokens: 32768,
+      },
+    ]);
+  };
+
+  const removeModel = (index: number) => {
+    const next = models.filter((_, i) => i !== index);
+    onModelsChange(next);
+    if (defaultModelId && !next.some((m) => m.id === defaultModelId)) {
+      onDefaultModelIdChange(next[0]?.id ?? "");
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="omp-provider-key">
+          {t("omp.form.providerKey", "Provider Key")}
+        </Label>
+        <Input
+          id="omp-provider-key"
+          value={providerKey}
+          onChange={(e) =>
+            onProviderKeyChange(normalizeAdditiveProviderKey(e.target.value))
+          }
+          placeholder="my-provider"
+          disabled={disabled || providerKeyDisabled || readOnly}
+        />
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "omp.form.providerKeyHint",
+            "Used as providers.<key> in ~/.omp/agent/models.yml",
+          )}
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label>{t("omp.form.api", "API Protocol")}</Label>
+        <Select
+          value={providerType}
+          onValueChange={(v) => onProviderTypeChange(v as OmpProviderType)}
+          disabled={disabled}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ompProviderTypeOptions.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "omp.form.apiHint",
+            "Written as the `api` field of the provider in models.yml",
+          )}
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="omp-base-url">
+          {t("omp.form.baseUrl", "Base URL")}
+        </Label>
+        <Input
+          id="omp-base-url"
+          value={baseUrl}
+          onChange={(e) => onBaseUrlChange(e.target.value)}
+          placeholder="https://api.anthropic.com"
+          disabled={disabled}
+        />
+      </div>
+
+      <ApiKeySection
+        value={apiKey}
+        onChange={onApiKeyChange}
+        disabled={disabled}
+        shouldShowLink={!!shouldShowApiKeyLink}
+        websiteUrl={websiteUrl ?? ""}
+        isPartner={isPartner}
+        partnerPromotionKey={partnerPromotionKey}
+      />
+
+      <div className="flex items-center space-x-2">
+        <Checkbox
+          id="omp-auth-header"
+          checked={authHeader}
+          onCheckedChange={(checked) => onAuthHeaderChange(checked === true)}
+          disabled={disabled}
+        />
+        <Label htmlFor="omp-auth-header" className="text-sm font-normal">
+          {t(
+            "omp.form.authHeader",
+            "Send API key as Authorization: Bearer header (authHeader)",
+          )}
+        </Label>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label>{t("omp.form.models", "Models")}</Label>
+          <div className="flex gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleFetchModels}
+              disabled={disabled || isFetchingModels}
+            >
+              {isFetchingModels ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5 mr-1" />
+              )}
+              {t("providerForm.fetchModels", "Fetch Models")}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addModel}
+              disabled={disabled}
+            >
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              {t("common.add", "Add")}
+            </Button>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {models.map((model, index) => (
+            <div
+              key={index}
+              className="rounded-md border p-3 space-y-2 bg-muted/20"
+            >
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">
+                    {t("omp.form.modelId", "Model ID")}
+                  </Label>
+                  <div className="flex items-center gap-1">
+                    <Input
+                      className="flex-1"
+                      value={model.id}
+                      onChange={(e) =>
+                        updateModel(index, { id: e.target.value })
+                      }
+                      placeholder="claude-fable-5"
+                      disabled={disabled}
+                    />
+                    {!disabled && fetchedModels.length > 0 && (
+                      <ModelDropdown
+                        models={fetchedModels}
+                        onSelect={(modelId) =>
+                          updateModel(index, {
+                            id: modelId,
+                            name: models[index].name || modelId,
+                          })
+                        }
+                      />
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">
+                    {t("omp.form.modelName", "Display Name")}
+                  </Label>
+                  <Input
+                    value={model.name ?? ""}
+                    onChange={(e) =>
+                      updateModel(index, { name: e.target.value })
+                    }
+                    placeholder="Claude Fable 5"
+                    disabled={disabled}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">
+                    {t("omp.form.contextWindow", "Context Window")}
+                  </Label>
+                  <Input
+                    type="number"
+                    value={model.contextWindow ?? ""}
+                    onChange={(e) =>
+                      updateModel(index, {
+                        contextWindow: e.target.value
+                          ? Number(e.target.value)
+                          : undefined,
+                      })
+                    }
+                    placeholder="1000000"
+                    disabled={disabled}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">
+                    {t("omp.form.maxTokens", "Max Output Tokens")}
+                  </Label>
+                  <Input
+                    type="number"
+                    value={model.maxTokens ?? ""}
+                    onChange={(e) =>
+                      updateModel(index, {
+                        maxTokens: e.target.value
+                          ? Number(e.target.value)
+                          : undefined,
+                      })
+                    }
+                    placeholder="128000"
+                    disabled={disabled}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeModel(index)}
+                  disabled={disabled || models.length <= 1}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>{t("omp.form.defaultModel", "Default Model")}</Label>
+        <Select
+          value={defaultModelId || models[0]?.id || ""}
+          onValueChange={onDefaultModelIdChange}
+          disabled={disabled || models.length === 0}
+        >
+          <SelectTrigger>
+            <SelectValue
+              placeholder={t("omp.form.selectModel", "Select model")}
+            />
+          </SelectTrigger>
+          <SelectContent>
+            {models
+              .filter((m) => m.id.trim())
+              .map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {m.name || m.id}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "omp.form.defaultModelHint",
+            "Used as the model in modelRoles when this provider is assigned to a role",
+          )}
+        </p>
+      </div>
+    </div>
+  );
+}

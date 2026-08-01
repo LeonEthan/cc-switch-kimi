@@ -116,6 +116,7 @@ export function useSettings(): UseSettingsResult {
       hermes: sanitizeDir(data?.hermesConfigDir),
       kimicode: sanitizeDir(data?.kimiCodeConfigDir),
       pi: sanitizeDir(data?.piConfigDir),
+      omp: sanitizeDir(data?.ompConfigDir),
     });
     setRequiresRestart(false);
   }, [

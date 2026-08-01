@@ -286,6 +286,7 @@ export interface VisibleApps {
   hermes: boolean;
   kimicode: boolean;
   pi: boolean;
+  omp: boolean;
 }
 
 // WebDAV 同步状态
@@ -409,6 +410,8 @@ export interface Settings {
   kimiCodeConfigDir?: string;
   // 覆盖 Pi 配置目录（可选）
   piConfigDir?: string;
+  // 覆盖 Omp 配置目录（可选）
+  ompConfigDir?: string;
 
   // ===== 当前供应商 ID（设备级）=====
   // 当前 Claude 供应商 ID（优先于数据库 is_current）
@@ -504,6 +507,8 @@ export interface McpApps {
   kimicode?: boolean;
   // Pi 无原生 MCP（仅扩展），仅用于面板索引的占位，后端不存储。
   pi?: boolean;
+  // Omp 同样无原生 MCP，占位用途同 pi。
+  omp?: boolean;
 }
 
 // MCP 服务器条目（v3.7.0 统一结构）

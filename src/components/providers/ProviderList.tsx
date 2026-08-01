@@ -35,6 +35,11 @@ import {
   useKimiCodeDefaultProviderId,
 } from "@/hooks/useKimiCode";
 import { usePiLiveProviderIds, usePiDefaultProviderId } from "@/hooks/usePi";
+import { useOmpLiveProviderIds, useOmpModelRoles } from "@/hooks/useOmp";
+import {
+  useSetOmpRoleMutation,
+  useClearOmpRoleMutation,
+} from "@/lib/query/mutations";
 import { useStreamCheck } from "@/hooks/useStreamCheck";
 import { ProviderCard } from "@/components/providers/ProviderCard";
 import { ProviderEmptyState } from "@/components/providers/ProviderEmptyState";
@@ -133,6 +138,33 @@ export function ProviderList({
   const { data: piLiveIds } = usePiLiveProviderIds(appId === "pi");
   const { data: piCurrentProviderId } = usePiDefaultProviderId(appId === "pi");
 
+  // Omp: live ids + role selectors (role → "<providerKey>/<modelId>").
+  // "Current" is role-based: a provider is in use when ≥1 role points at it.
+  const { data: ompLiveIds } = useOmpLiveProviderIds(appId === "omp");
+  const { data: ompModelRoles } = useOmpModelRoles(appId === "omp");
+  const setOmpRoleMutation = useSetOmpRoleMutation();
+  const clearOmpRoleMutation = useClearOmpRoleMutation();
+
+  // providerKey → assigned roles (split selector on the FIRST "/": provider
+  // keys never contain "/", model ids may — e.g. "anthropic/claude-sonnet-5").
+  const ompRolesByProvider = useMemo(() => {
+    const map = new Map<string, string[]>();
+    if (!ompModelRoles) return map;
+    for (const [role, selector] of Object.entries(ompModelRoles)) {
+      if (typeof selector !== "string") continue;
+      const slash = selector.indexOf("/");
+      const key = slash >= 0 ? selector.slice(0, slash) : selector;
+      if (!key) continue;
+      const roles = map.get(key);
+      if (roles) {
+        roles.push(role);
+      } else {
+        map.set(key, [role]);
+      }
+    }
+    return map;
+  }, [ompModelRoles]);
+
   // 判断供应商是否已添加到配置（累加模式应用：OpenCode/OpenClaw/Hermes/KimiCode）
   const isProviderInConfig = useCallback(
     (providerId: string): boolean => {
@@ -151,6 +183,9 @@ export function ProviderList({
       if (appId === "pi") {
         return piLiveIds?.includes(providerId) ?? false;
       }
+      if (appId === "omp") {
+        return ompLiveIds?.includes(providerId) ?? false;
+      }
       return true; // 其他应用始终返回 true
     },
     [
@@ -160,6 +195,7 @@ export function ProviderList({
       hermesLiveIds,
       kimiCodeLiveIds,
       piLiveIds,
+      ompLiveIds,
     ],
   );
 
@@ -259,6 +295,10 @@ export function ProviderList({
       }
       if (appId === "pi") {
         const count = await providersApi.importPiFromLive();
+        return count > 0;
+      }
+      if (appId === "omp") {
+        const count = await providersApi.importOmpFromLive();
         return count > 0;
       }
       if (appId === "claude-desktop") {
@@ -435,6 +475,11 @@ export function ProviderList({
               appId === "kimicode" && kimiCodeCurrentProviderId === provider.id;
             const isPiCurrent =
               appId === "pi" && piCurrentProviderId === provider.id;
+            const ompRoles =
+              appId === "omp"
+                ? (ompRolesByProvider.get(provider.id) ?? [])
+                : [];
+            const isOmpCurrent = appId === "omp" && ompRoles.length > 0;
             return (
               <SortableProviderCard
                 key={provider.id}
@@ -450,12 +495,29 @@ export function ProviderList({
                           ? isKimiCodeCurrent
                           : appId === "pi"
                             ? isPiCurrent
-                            : provider.id === currentProviderId
+                            : appId === "omp"
+                              ? isOmpCurrent
+                              : provider.id === currentProviderId
                 }
                 appId={appId}
                 isInConfig={isProviderInConfig(provider.id)}
                 isOmo={isOmo}
                 isOmoSlim={isOmoSlim}
+                ompRoles={ompRoles}
+                onAssignOmpRole={
+                  appId === "omp"
+                    ? (role) =>
+                        setOmpRoleMutation.mutate({
+                          providerId: provider.id,
+                          role,
+                        })
+                    : undefined
+                }
+                onClearOmpRole={
+                  appId === "omp"
+                    ? (role) => clearOmpRoleMutation.mutate(role)
+                    : undefined
+                }
                 onSwitch={onSwitch}
                 onEdit={onEdit}
                 onDelete={onDelete}
@@ -599,6 +661,10 @@ interface SortableProviderCardProps {
   isInConfig: boolean;
   isOmo: boolean;
   isOmoSlim: boolean;
+  // Omp: roles currently assigned to this provider (role-based "current")
+  ompRoles?: string[];
+  onAssignOmpRole?: (role: string) => void;
+  onClearOmpRole?: (role: string) => void;
   onSwitch: (provider: Provider) => void;
   onEdit: (provider: Provider) => void;
   onDelete: (provider: Provider) => void;
@@ -630,6 +696,9 @@ function SortableProviderCard({
   isInConfig,
   isOmo,
   isOmoSlim,
+  ompRoles,
+  onAssignOmpRole,
+  onClearOmpRole,
   onSwitch,
   onEdit,
   onDelete,
@@ -675,6 +744,9 @@ function SortableProviderCard({
         isInConfig={isInConfig}
         isOmo={isOmo}
         isOmoSlim={isOmoSlim}
+        ompRoles={ompRoles}
+        onAssignOmpRole={onAssignOmpRole}
+        onClearOmpRole={onClearOmpRole}
         onSwitch={onSwitch}
         onEdit={onEdit}
         onDelete={onDelete}

@@ -132,6 +132,8 @@ const VALID_APPS: AppId[] = [
   "openclaw",
   "hermes",
   "kimicode",
+  "pi",
+  "omp",
 ];
 
 const getInitialApp = (): AppId => {
@@ -202,6 +204,7 @@ function App() {
     hermes: true,
     kimicode: true,
     pi: false,
+    omp: false,
   };
 
   const getFirstVisibleApp = (): AppId => {
@@ -215,6 +218,7 @@ function App() {
     if (visibleApps.hermes) return "hermes";
     if (visibleApps.kimicode) return "kimicode";
     if (visibleApps.pi) return "pi";
+    if (visibleApps.omp) return "omp";
     return "claude"; // fallback
   };
 
@@ -236,7 +240,8 @@ function App() {
       sharedFeatureApp !== "gemini" &&
       sharedFeatureApp !== "hermes" &&
       sharedFeatureApp !== "kimicode" &&
-      sharedFeatureApp !== "pi"
+      sharedFeatureApp !== "pi" &&
+      sharedFeatureApp !== "omp"
     ) {
       setCurrentView("providers");
     }
@@ -308,7 +313,8 @@ function App() {
     sharedFeatureApp === "gemini" ||
     sharedFeatureApp === "hermes" ||
     sharedFeatureApp === "kimicode" ||
-    sharedFeatureApp === "pi";
+    sharedFeatureApp === "pi" ||
+    sharedFeatureApp === "omp";
 
   const {
     addProvider,

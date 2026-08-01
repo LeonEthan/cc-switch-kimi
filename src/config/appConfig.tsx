@@ -26,6 +26,7 @@ export const APP_IDS: AppId[] = [
   "hermes",
   "kimicode",
   "pi",
+  "omp",
 ];
 
 /** App IDs shown in Skills panels (excludes OpenClaw — it doesn't support Skills) */
@@ -38,10 +39,13 @@ export const SKILLS_APP_IDS: AppId[] = [
   "hermes",
   "kimicode",
   "pi",
+  "omp",
 ];
 
-/** App IDs shown in MCP panels (excludes OpenClaw and Pi — no native MCP) */
-export const MCP_APP_IDS: AppId[] = SKILLS_APP_IDS.filter((id) => id !== "pi");
+/** App IDs shown in MCP panels (excludes OpenClaw, Pi and Omp — no native MCP) */
+export const MCP_APP_IDS: AppId[] = SKILLS_APP_IDS.filter(
+  (id) => id !== "pi" && id !== "omp",
+);
 
 export const APP_ICON_MAP: Record<AppId, AppConfig> = {
   claude: {
@@ -151,5 +155,13 @@ export const APP_ICON_MAP: Record<AppId, AppConfig> = {
       "bg-teal-500/10 ring-1 ring-teal-500/20 hover:bg-teal-500/20 text-teal-700 dark:text-teal-300",
     badgeClass:
       "bg-teal-500/10 text-teal-700 dark:text-teal-300 hover:bg-teal-500/20 border-0 gap-1.5",
+  },
+  omp: {
+    label: "Omp",
+    icon: <ProviderIcon icon="omp" name="Omp" size={14} showFallback={true} />,
+    activeClass:
+      "bg-purple-500/10 ring-1 ring-purple-500/20 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300",
+    badgeClass:
+      "bg-purple-500/10 text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 border-0 gap-1.5",
   },
 };

@@ -68,6 +68,8 @@ const UnifiedMcpPanel = React.forwardRef<
       kimicode: 0,
       // Pi 无原生 MCP，计数恒为 0（MCP_APP_IDS 不含 pi）。
       pi: 0,
+      // Omp 同 pi：无原生 MCP，计数恒为 0。
+      omp: 0,
     };
     serverEntries.forEach(([_, server]) => {
       for (const app of MCP_APP_IDS) {

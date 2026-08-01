@@ -150,6 +150,8 @@
     "managedByKimiCodeHint": "Managed by Kimi Code OAuth. Use /login in the CLI to change it.",
     "managedByPi": "Pi Managed",
     "managedByPiHint": "Managed by Pi (OAuth is owned by Pi). Use /login inside Pi to change it.",
+    "managedByOmp": "Omp Managed",
+    "managedByOmpHint": "Managed by Omp (OAuth is owned by Omp). Use /login inside Omp to change it.",
     "openTerminal": "Open Terminal",
     "terminalOpened": "Terminal opened",
     "terminalOpenFailed": "Failed to open terminal",
@@ -880,8 +882,10 @@
     "saveFailedGeneric": "Save failed, please try again",
     "kimiCodeConfigDir": "Kimi Code Config Directory",
     "piConfigDir": "Pi Config Directory",
+    "ompConfigDir": "Omp Config Directory",
     "browsePlaceholderKimiCode": "~/.kimi-code",
-    "browsePlaceholderPi": "~/.pi/agent"
+    "browsePlaceholderPi": "~/.pi/agent",
+    "browsePlaceholderOmp": "~/.omp/agent"
   },
   "apps": {
     "claude": "Claude",
@@ -895,7 +899,8 @@
     "openclaw": "OpenClaw",
     "hermes": "Hermes",
     "kimicode": "Kimi Code",
-    "pi": "Pi"
+    "pi": "Pi",
+    "omp": "Omp"
   },
   "grokBuild": {
     "apiBackend": "API backend",
@@ -1515,7 +1520,8 @@
       "opencode": "OpenCode",
       "grokbuild": "Grok Build",
       "kimicode": "Kimi Code",
-      "pi": "Pi"
+      "pi": "Pi",
+      "omp": "Omp"
     },
     "rawInputLabel": "Raw",
     "dataSources": "Data Sources",
@@ -1528,7 +1534,8 @@
       "opencode_session": "OpenCode Session",
       "grok_session": "Grok Build Session",
       "kimicode_session": "Kimi Code Session",
-      "pi_session": "Pi Session"
+      "pi_session": "Pi Session",
+      "omp_session": "Omp Session"
     },
     "sessionSync": {
       "trigger": "Sync session logs",
@@ -3066,6 +3073,44 @@
       "defaultModel": "Default Model",
       "selectModel": "Select model",
       "defaultModelHint": "Written to settings.json defaultModel when this provider is enabled"
+    }
+  },
+  "omp": {
+    "form": {
+      "providerKey": "Provider Key",
+      "providerKeyHint": "Used as providers.<key> in ~/.omp/agent/models.yml",
+      "providerKeyRequired": "Provider key is required",
+      "providerKeyInvalid": "Invalid format. Use lowercase letters, numbers, and hyphens only.",
+      "providerKeyDuplicate": "This key is already in use",
+      "api": "API Protocol",
+      "apiHint": "Written as the api field of the provider in models.yml",
+      "baseUrl": "Base URL",
+      "models": "Models",
+      "modelId": "Model ID",
+      "modelName": "Display Name",
+      "contextWindow": "Context Window",
+      "maxTokens": "Max Output Tokens",
+      "defaultModel": "Default Model",
+      "selectModel": "Select model",
+      "defaultModelHint": "Used as the model in modelRoles when this provider is assigned to a role",
+      "authHeader": "Send API key as Authorization: Bearer header (authHeader)"
+    },
+    "roles": {
+      "default": "default",
+      "defaultHint": "Main model",
+      "smol": "smol",
+      "smolHint": "Small, fast tasks",
+      "slow": "slow",
+      "slowHint": "Background / low-cost tasks",
+      "plan": "plan",
+      "planHint": "Planning",
+      "commit": "commit",
+      "commitHint": "Commit messages"
+    },
+    "actions": {
+      "assignRole": "Assign role…",
+      "assigned": "{{count}} roles active",
+      "clearRole": "Clear role"
     }
   }
 }

@@ -52,6 +52,7 @@ export interface ProxyTakeoverStatus {
   hermes: boolean;
   kimicode: boolean;
   pi: boolean;
+  omp: boolean;
 }
 
 export interface ProviderHealth {

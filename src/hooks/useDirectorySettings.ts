@@ -15,7 +15,8 @@ type AppDirectoryKey =
   | "openclaw"
   | "hermes"
   | "kimicode"
-  | "pi";
+  | "pi"
+  | "omp";
 type DirectoryKey = "appConfig" | AppDirectoryKey;
 
 export interface ResolvedDirectories {
@@ -29,6 +30,7 @@ export interface ResolvedDirectories {
   hermes: string;
   kimicode: string;
   pi: string;
+  omp: string;
 }
 
 // Single source of truth for per-app directory metadata.
@@ -45,6 +47,7 @@ const APP_DIRECTORY_META: Record<
   hermes: { key: "hermes", defaultFolder: ".hermes" },
   kimicode: { key: "kimicode", defaultFolder: ".kimi-code" },
   pi: { key: "pi", defaultFolder: ".pi/agent" },
+  omp: { key: "omp", defaultFolder: ".omp/agent" },
 };
 
 const DIRECTORY_KEY_TO_SETTINGS_FIELD: Record<
@@ -60,6 +63,7 @@ const DIRECTORY_KEY_TO_SETTINGS_FIELD: Record<
   hermes: "hermesConfigDir",
   kimicode: "kimiCodeConfigDir",
   pi: "piConfigDir",
+  omp: "ompConfigDir",
 };
 
 const sanitizeDir = (value?: string | null): string | undefined => {
@@ -148,6 +152,7 @@ export function useDirectorySettings({
     hermes: "",
     kimicode: "",
     pi: "",
+    omp: "",
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -162,6 +167,7 @@ export function useDirectorySettings({
     hermes: "",
     kimicode: "",
     pi: "",
+    omp: "",
   });
   const initialAppConfigDirRef = useRef<string | undefined>(undefined);
 
@@ -183,6 +189,7 @@ export function useDirectorySettings({
           hermesDir,
           kimiCodeDir,
           piDir,
+          ompDir,
           defaultAppConfig,
           defaultClaudeDir,
           defaultCodexDir,
@@ -193,6 +200,7 @@ export function useDirectorySettings({
           defaultHermesDir,
           defaultKimiCodeDir,
           defaultPiDir,
+          defaultOmpDir,
         ] = await Promise.all([
           settingsApi.getAppConfigDirOverride(),
           settingsApi.getConfigDir("claude"),
@@ -204,6 +212,7 @@ export function useDirectorySettings({
           settingsApi.getConfigDir("hermes"),
           settingsApi.getConfigDir("kimicode"),
           settingsApi.getConfigDir("pi"),
+          settingsApi.getConfigDir("omp"),
           computeDefaultAppConfigDir(),
           computeDefaultConfigDir("claude"),
           computeDefaultConfigDir("codex"),
@@ -214,6 +223,7 @@ export function useDirectorySettings({
           computeDefaultConfigDir("hermes"),
           computeDefaultConfigDir("kimicode"),
           computeDefaultConfigDir("pi"),
+          computeDefaultConfigDir("omp"),
         ]);
 
         if (!active) return;
@@ -231,6 +241,7 @@ export function useDirectorySettings({
           hermes: defaultHermesDir ?? "",
           kimicode: defaultKimiCodeDir ?? "",
           pi: defaultPiDir ?? "",
+          omp: defaultOmpDir ?? "",
         };
 
         setAppConfigDir(normalizedOverride);
@@ -247,6 +258,7 @@ export function useDirectorySettings({
           hermes: hermesDir || defaultsRef.current.hermes,
           kimicode: kimiCodeDir || defaultsRef.current.kimicode,
           pi: piDir || defaultsRef.current.pi,
+          omp: ompDir || defaultsRef.current.omp,
         });
       } catch (error) {
         console.error(
@@ -391,6 +403,7 @@ export function useDirectorySettings({
         hermes: overrides?.hermes ?? defaultsRef.current.hermes,
         kimicode: overrides?.kimicode ?? defaultsRef.current.kimicode,
         pi: overrides?.pi ?? defaultsRef.current.pi,
+        omp: overrides?.omp ?? defaultsRef.current.omp,
       });
     },
     [],

@@ -11,6 +11,7 @@ import { openclawKeys } from "@/hooks/useOpenClaw";
 import { invalidateHermesProviderCaches } from "@/hooks/useHermes";
 import { kimiCodeKeys } from "@/hooks/useKimiCode";
 import { piKeys } from "@/hooks/usePi";
+import { ompKeys } from "@/hooks/useOmp";
 import { usageKeys } from "@/lib/query/usage";
 import {
   CODEX_OFFICIAL_PROVIDER_ID,
@@ -342,6 +343,14 @@ export const useSwitchProviderMutation = (appId: AppId) => {
           queryKey: piKeys.defaultModel,
         });
       }
+      if (appId === "omp") {
+        await queryClient.invalidateQueries({
+          queryKey: ompKeys.liveProviderIds,
+        });
+        await queryClient.invalidateQueries({
+          queryKey: ompKeys.modelRoles,
+        });
+      }
 
       try {
         await providersApi.updateTrayMenu();
@@ -370,6 +379,66 @@ export const useSwitchProviderMutation = (appId: AppId) => {
             },
           },
         },
+      );
+    },
+  });
+};
+
+export const useSetOmpRoleMutation = () => {
+  const queryClient = useQueryClient();
+  const { t } = useTranslation();
+
+  return useMutation({
+    mutationFn: async ({
+      providerId,
+      role,
+    }: {
+      providerId: string;
+      role: string;
+    }) => {
+      await providersApi.setOmpProviderRole(providerId, role);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ompKeys.liveProviderIds,
+      });
+      await queryClient.invalidateQueries({ queryKey: ompKeys.modelRoles });
+      await queryClient.invalidateQueries({ queryKey: ["providers", "omp"] });
+    },
+    onError: (error: Error) => {
+      const detail = extractErrorMessage(error) || t("common.unknown");
+      toast.error(
+        t("notifications.switchFailed", {
+          defaultValue: "切换失败：{{error}}",
+          error: detail,
+        }),
+      );
+    },
+  });
+};
+
+export const useClearOmpRoleMutation = () => {
+  const queryClient = useQueryClient();
+  const { t } = useTranslation();
+
+  return useMutation({
+    mutationFn: async (role: string) => {
+      await providersApi.clearOmpRole(role);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ompKeys.liveProviderIds,
+      });
+      await queryClient.invalidateQueries({ queryKey: ompKeys.modelRoles });
+      await queryClient.invalidateQueries({ queryKey: ["providers", "omp"] });
+    },
+    onError: (error: Error) => {
+      const detail = extractErrorMessage(error) || t("common.unknown");
+      toast.error(
+        t("notifications.switchFailed", {
+          defaultValue: "切换失败：{{error}}",
+          error: detail,
+        }),
       );
     },
   });

@@ -14,8 +14,17 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import type { AppId } from "@/lib/api";
+
+/** Omp model roles offered in the role dropdown (config.yml modelRoles). */
+export const OMP_ROLES = ["default", "smol", "slow", "plan", "commit"] as const;
 
 interface ProviderActionsProps {
   appId?: AppId;
@@ -25,6 +34,10 @@ interface ProviderActionsProps {
   isProxyTakeover?: boolean;
   isOmo?: boolean;
   onSwitch: () => void;
+  // Omp: role-based enable — roles assigned to THIS provider + assign/clear
+  ompRoles?: string[];
+  onAssignOmpRole?: (role: string) => void;
+  onClearOmpRole?: (role: string) => void;
   onEdit: () => void;
   onDuplicate: () => void;
   onTest?: () => void;
@@ -64,6 +77,9 @@ export function ProviderActions({
   isProxyTakeover = false,
   isOmo = false,
   onSwitch,
+  ompRoles,
+  onAssignOmpRole,
+  onClearOmpRole,
   onEdit,
   onDuplicate,
   onTest,
@@ -224,9 +240,16 @@ export function ProviderActions({
 
   const canDelete =
     !isReadOnly && (isOmo || isAdditiveMode ? true : !isCurrent);
-  const readOnlyHint = t("provider.managedByHermesHint", {
-    defaultValue: "由 Hermes 管理，请在 Hermes Web UI 中编辑",
-  });
+  const readOnlyHint =
+    appId === "kimicode"
+      ? t("provider.managedByKimiCodeHint")
+      : appId === "pi"
+        ? t("provider.managedByPiHint")
+        : appId === "omp"
+          ? t("provider.managedByOmpHint")
+          : t("provider.managedByHermesHint", {
+              defaultValue: "由 Hermes 管理，请在 Hermes Web UI 中编辑",
+            });
 
   return (
     <div className="flex items-center gap-1.5">
@@ -263,24 +286,86 @@ export function ProviderActions({
 
       {/* wrapper span 承接 hover：disabled 按钮自身 pointer-events:none，
           原生 title 与 cursor 都必须挂在未禁用的外层元素上才会生效 */}
-      <span
-        title={buttonState.title}
-        className={cn(
-          "inline-flex",
-          buttonState.disabled && "cursor-not-allowed",
-        )}
-      >
-        <Button
-          size="sm"
-          variant={buttonState.variant}
-          onClick={handleMainButtonClick}
-          disabled={buttonState.disabled}
-          className={cn("w-[4.5rem] px-2.5", buttonState.className)}
+      {appId === "omp" ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="sm"
+              variant={
+                ompRoles && ompRoles.length > 0 ? "secondary" : "default"
+              }
+              className={cn(
+                "w-fit px-2.5",
+                ompRoles &&
+                  ompRoles.length > 0 &&
+                  "bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/50 dark:text-purple-300 dark:hover:bg-purple-900/70",
+              )}
+            >
+              {ompRoles && ompRoles.length > 0 ? (
+                <>
+                  <Check className="h-4 w-4" />
+                  {t("omp.actions.assigned", {
+                    count: ompRoles.length,
+                    defaultValue: "已启用 {{count}} 个角色",
+                  })}
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4" />
+                  {t("omp.actions.assignRole", { defaultValue: "启用为…" })}
+                </>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {OMP_ROLES.map((role) => {
+              const assigned = ompRoles?.includes(role) ?? false;
+              return (
+                <DropdownMenuItem
+                  key={role}
+                  onSelect={() => {
+                    if (assigned) {
+                      onClearOmpRole?.(role);
+                    } else {
+                      onAssignOmpRole?.(role);
+                    }
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "h-4 w-4",
+                      assigned ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                  <span>{t(`omp.roles.${role}`, { defaultValue: role })}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {t(`omp.roles.${role}Hint`, { defaultValue: "" })}
+                  </span>
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <span
+          title={buttonState.title}
+          className={cn(
+            "inline-flex",
+            buttonState.disabled && "cursor-not-allowed",
+          )}
         >
-          {buttonState.icon}
-          {buttonState.text}
-        </Button>
-      </span>
+          <Button
+            size="sm"
+            variant={buttonState.variant}
+            onClick={handleMainButtonClick}
+            disabled={buttonState.disabled}
+            className={cn("w-[4.5rem] px-2.5", buttonState.className)}
+          >
+            {buttonState.icon}
+            {buttonState.text}
+          </Button>
+        </span>
+      )}
 
       <div className="flex items-center gap-1">
         <Button

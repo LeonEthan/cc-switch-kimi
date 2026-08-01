@@ -69,6 +69,7 @@ const TOOL_NAMES = [
   "hermes",
   "kimicode",
   "pi",
+  "omp",
 ] as const;
 type ToolName = (typeof TOOL_NAMES)[number];
 type ToolLifecycleAction = "install" | "update";
@@ -149,7 +150,9 @@ ${posixScriptInstallCommand("https://raw.githubusercontent.com/NousResearch/herm
 # Kimi Code
 ${posixScriptInstallCommand("https://code.kimi.com/kimi-code/install.sh")} || npm i -g @moonshot-ai/kimi-code@latest
 # Pi
-npm i -g @earendil-works/pi-coding-agent@latest`;
+npm i -g @earendil-works/pi-coding-agent@latest
+# Omp
+bun install -g @oh-my-pi/pi-coding-agent@latest || brew install can1357/tap/omp`;
 
 const WINDOWS_ONE_CLICK_INSTALL_COMMANDS = `# Claude Code
 npm i -g @anthropic-ai/claude-code@latest
@@ -168,7 +171,9 @@ ${HERMES_WINDOWS_INSTALL_COMMAND}
 # Kimi Code
 ${KIMICODE_WINDOWS_INSTALL_COMMAND} || npm i -g @moonshot-ai/kimi-code@latest
 # Pi
-npm i -g @earendil-works/pi-coding-agent@latest`;
+npm i -g @earendil-works/pi-coding-agent@latest
+# Omp
+bun install -g @oh-my-pi/pi-coding-agent@latest`;
 
 const ONE_CLICK_INSTALL_COMMANDS = isWindows()
   ? WINDOWS_ONE_CLICK_INSTALL_COMMANDS
@@ -184,6 +189,7 @@ const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
   hermes: "Hermes",
   kimicode: "Kimi Code",
   pi: "Pi",
+  omp: "Omp",
 };
 
 // 后端返回的 tool 是 string；这里收敛唯一的 ToolName 断言与兜底，供升级确认
@@ -202,6 +208,7 @@ const TOOL_APP_IDS: Record<ToolName, AppId> = {
   hermes: "hermes",
   kimicode: "kimicode",
   pi: "pi",
+  omp: "omp",
 };
 
 // 工具版本探测代价高：每个工具一次 `--version` 子进程 + 一次 npm/github/pypi 网络请求。

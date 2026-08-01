@@ -57,6 +57,7 @@ export function AppSwitcher({
     hermes: "hermes",
     kimicode: "kimi",
     pi: "pi",
+    omp: "omp",
   };
   // Display name lookup via i18n — keeps `apps.*` locale files as the single
   // source of truth. Falls back to the id itself (e.g. "kimicode") when the

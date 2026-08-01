@@ -90,7 +90,8 @@ type ProviderFilter =
   | "gemini"
   | "hermes"
   | "kimicode"
-  | "pi";
+  | "pi"
+  | "omp";
 
 type SessionListViewMode = "flat" | "grouped";
 
@@ -1154,6 +1155,12 @@ export function SessionManagerPage({ appId }: { appId: string }) {
                               <div className="flex items-center gap-2">
                                 <ProviderIcon icon="pi" name="pi" size={14} />
                                 <span>{t("apps.pi")}</span>
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="omp">
+                              <div className="flex items-center gap-2">
+                                <ProviderIcon icon="omp" name="omp" size={14} />
+                                <span>{t("apps.omp")}</span>
                               </div>
                             </SelectItem>
                           </SelectContent>

@@ -175,7 +175,8 @@ export interface UsageRangeSelection {
  * all — they appear only as managed apps elsewhere. Kimi Code usage arrives
  * via session-log import (`kimicode_session` data source). Pi usage arrives
  * both via its namespaced proxy routes (`/pi/*`) and via session-log import
- * (`pi_session` data source).
+ * (`pi_session` data source). Omp likewise arrives via `/omp/*` proxy routes
+ * and the `omp_session` data source.
  */
 export type AppType =
   | "claude"
@@ -184,7 +185,8 @@ export type AppType =
   | "grokbuild"
   | "opencode"
   | "kimicode"
-  | "pi";
+  | "pi"
+  | "omp";
 
 export type AppTypeFilter = "all" | AppType;
 
@@ -196,6 +198,7 @@ export const KNOWN_APP_TYPES: ReadonlyArray<AppType> = [
   "opencode",
   "kimicode",
   "pi",
+  "omp",
 ];
 
 /**

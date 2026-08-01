@@ -60,11 +60,17 @@ import {
   piProviderPresets,
   type PiProviderPreset,
 } from "@/config/piProviderPresets";
+import {
+  isOmpManagedProvider,
+  ompProviderPresets,
+  type OmpProviderPreset,
+} from "@/config/ompProviderPresets";
 import { OpenCodeFormFields } from "./OpenCodeFormFields";
 import { OpenClawFormFields } from "./OpenClawFormFields";
 import { HermesFormFields } from "./HermesFormFields";
 import { KimiCodeFormFields } from "./KimiCodeFormFields";
 import { PiFormFields } from "./PiFormFields";
+import { OmpFormFields } from "./OmpFormFields";
 import type { UniversalProviderPreset } from "@/config/universalProviderPresets";
 import {
   applyTemplateValues,
@@ -119,6 +125,7 @@ import {
   useHermesFormState,
   useKimiCodeFormState,
   usePiFormState,
+  useOmpFormState,
   useCopilotAuth,
   useCodexOauth,
   useXaiOauth,
@@ -139,6 +146,7 @@ import { useOpenClawLiveProviderIds } from "@/hooks/useOpenClaw";
 import { useHermesLiveProviderIds } from "@/hooks/useHermes";
 import { useKimiCodeLiveProviderIds } from "@/hooks/useKimiCode";
 import { usePiLiveProviderIds } from "@/hooks/usePi";
+import { useOmpLiveProviderIds } from "@/hooks/useOmp";
 import { validateAdditiveProviderKey } from "./helpers/additiveProviderKey";
 
 type PresetEntry = {
@@ -151,7 +159,8 @@ type PresetEntry = {
     | OpenClawProviderPreset
     | HermesProviderPreset
     | KimiCodeProviderPreset
-    | PiProviderPreset;
+    | PiProviderPreset
+    | OmpProviderPreset;
 };
 
 export const normalizeCodexCatalogModelsForSave = (
@@ -737,6 +746,11 @@ function ProviderFormFull({
         id: `pi-${index}`,
         preset,
       }));
+    } else if (appId === "omp") {
+      return ompProviderPresets.map<PresetEntry>((preset, index) => ({
+        id: `omp-${index}`,
+        preset,
+      }));
     }
     return providerPresets
       .filter((p) => !p.hidden)
@@ -979,6 +993,18 @@ function ProviderFormFull({
     isLoading: isPiLiveProviderIdsLoading,
   } = usePiLiveProviderIds(appId === "pi");
 
+  const ompForm = useOmpFormState({
+    initialData,
+    appId,
+    providerId,
+    onSettingsConfigChange: (config) => form.setValue("settingsConfig", config),
+    getSettingsConfig: () => form.getValues("settingsConfig"),
+  });
+  const {
+    data: ompLiveProviderIds = [],
+    isLoading: isOmpLiveProviderIdsLoading,
+  } = useOmpLiveProviderIds(appId === "omp");
+
   const additiveExistingProviderKeys = useMemo(() => {
     if (appId === "opencode" && !isAnyOmoCategory) {
       return Array.from(
@@ -1031,6 +1057,16 @@ function ProviderFormFull({
       );
     }
 
+    if (appId === "omp") {
+      return Array.from(
+        new Set(
+          [...ompForm.existingKeys, ...ompLiveProviderIds].filter(
+            (key) => key !== providerId,
+          ),
+        ),
+      );
+    }
+
     return [];
   }, [
     appId,
@@ -1042,6 +1078,8 @@ function ProviderFormFull({
     kimiCodeLiveProviderIds,
     piForm.existingKeys,
     piLiveProviderIds,
+    ompForm.existingKeys,
+    ompLiveProviderIds,
     openclawForm.existingOpenclawKeys,
     openclawLiveProviderIds,
     opencodeLiveProviderIds,
@@ -1065,6 +1103,9 @@ function ProviderFormFull({
     if (appId === "pi") {
       return isPiLiveProviderIdsLoading;
     }
+    if (appId === "omp") {
+      return isOmpLiveProviderIdsLoading;
+    }
     return false;
   }, [
     appId,
@@ -1073,6 +1114,7 @@ function ProviderFormFull({
     isHermesLiveProviderIdsLoading,
     isKimiCodeLiveProviderIdsLoading,
     isPiLiveProviderIdsLoading,
+    isOmpLiveProviderIdsLoading,
     isOpenclawLiveProviderIdsLoading,
     isOpencodeLiveProviderIdsLoading,
   ]);
@@ -1094,6 +1136,9 @@ function ProviderFormFull({
     if (appId === "pi") {
       return piLiveProviderIds.includes(providerId);
     }
+    if (appId === "omp") {
+      return ompLiveProviderIds.includes(providerId);
+    }
     return false;
   }, [
     appId,
@@ -1102,6 +1147,7 @@ function ProviderFormFull({
     isEditMode,
     kimiCodeLiveProviderIds,
     piLiveProviderIds,
+    ompLiveProviderIds,
     openclawLiveProviderIds,
     opencodeLiveProviderIds,
     providerId,
@@ -1205,7 +1251,14 @@ function ProviderFormFull({
                     invalid: "pi.form.providerKeyInvalid",
                     duplicate: "pi.form.providerKeyDuplicate",
                   }
-                : null;
+                : appId === "omp"
+                  ? {
+                      key: ompForm.providerKey,
+                      required: "omp.form.providerKeyRequired",
+                      invalid: "omp.form.providerKeyInvalid",
+                      duplicate: "omp.form.providerKeyDuplicate",
+                    }
+                  : null;
 
     if (additiveKey) {
       const result = validateAdditiveProviderKey({
@@ -1552,6 +1605,8 @@ function ProviderFormFull({
       payload.providerKey = kimiCodeForm.providerKey;
     } else if (appId === "pi") {
       payload.providerKey = piForm.providerKey;
+    } else if (appId === "omp") {
+      payload.providerKey = ompForm.providerKey;
     }
 
     if (isAnyOmoCategory && !payload.presetCategory) {
@@ -2019,6 +2074,21 @@ function ProviderFormFull({
       const preset = entry.preset as PiProviderPreset;
       const config = preset.settingsConfig;
       piForm.resetState(config);
+      form.reset({
+        name: preset.nameKey ? t(preset.nameKey) : preset.name,
+        websiteUrl: preset.websiteUrl ?? "",
+        settingsConfig: JSON.stringify(config, null, 2),
+        icon: preset.icon ?? "",
+        iconColor: preset.iconColor ?? "",
+      });
+      return;
+    }
+
+    // Omp preset handling
+    if (appId === "omp") {
+      const preset = entry.preset as OmpProviderPreset;
+      const config = preset.settingsConfig;
+      ompForm.resetState(config);
       form.reset({
         name: preset.nameKey ? t(preset.nameKey) : preset.name,
         websiteUrl: preset.websiteUrl ?? "",
@@ -2610,6 +2680,31 @@ function ProviderFormFull({
             />
           )}
 
+          {/* Omp 专属字段 */}
+          {appId === "omp" && (
+            <OmpFormFields
+              providerKey={ompForm.providerKey}
+              onProviderKeyChange={ompForm.setProviderKey}
+              providerKeyDisabled={isEditMode && isProviderKeyLocked}
+              providerType={ompForm.providerType}
+              onProviderTypeChange={ompForm.handleTypeChange}
+              baseUrl={ompForm.baseUrl}
+              onBaseUrlChange={ompForm.handleBaseUrlChange}
+              apiKey={ompForm.apiKey}
+              onApiKeyChange={ompForm.handleApiKeyChange}
+              authHeader={ompForm.authHeader}
+              onAuthHeaderChange={ompForm.handleAuthHeaderChange}
+              models={ompForm.models}
+              onModelsChange={ompForm.handleModelsChange}
+              defaultModelId={ompForm.defaultModelId}
+              onDefaultModelIdChange={ompForm.handleDefaultModelIdChange}
+              readOnly={
+                !!providerId &&
+                isOmpManagedProvider(providerId, initialData?.settingsConfig)
+              }
+            />
+          )}
+
           {/* 配置编辑器：Codex、Claude、Gemini 分别使用不同的编辑器 */}
           {appId === "codex" ? (
             <>
@@ -2701,7 +2796,8 @@ function ProviderFormFull({
           ) : appId === "openclaw" ||
             appId === "hermes" ||
             appId === "kimicode" ||
-            appId === "pi" ? (
+            appId === "pi" ||
+            appId === "omp" ? (
             <>
               <div className="space-y-2">
                 <Label htmlFor="settingsConfig">
@@ -2733,7 +2829,15 @@ function ProviderFormFull({
   "defaultModelId": "claude-fable-5",
   "models": [{ "id": "claude-fable-5", "contextWindow": 1000000, "maxTokens": 128000 }]
 }`
-                          : `{
+                          : appId === "omp"
+                            ? `{
+  "api": "anthropic-messages",
+  "baseUrl": "https://api.anthropic.com",
+  "apiKey": "",
+  "defaultModelId": "claude-fable-5",
+  "models": [{ "id": "claude-fable-5", "contextWindow": 1000000, "maxTokens": 128000 }]
+}`
+                            : `{
   "baseUrl": "https://api.example.com/v1",
   "apiKey": "your-api-key-here",
   "api": "openai-completions",

@@ -16,7 +16,7 @@ import type { AppId } from "./types";
 /**
  * Apps whose live config holds **all** providers additively (vs. switching
  * the live file wholesale to whichever provider is "current"). Includes
- * Hermes / OpenClaw / OpenCode / Kimi Code / Pi per ADR #1 + ADR #7.
+ * Hermes / OpenClaw / OpenCode / Kimi Code / Pi / Omp per ADR #1 + ADR #7.
  */
 export const ADDITIVE_APPS: ReadonlySet<AppId> = new Set<AppId>([
   "opencode",
@@ -24,6 +24,7 @@ export const ADDITIVE_APPS: ReadonlySet<AppId> = new Set<AppId>([
   "hermes",
   "kimicode",
   "pi",
+  "omp",
 ]);
 
 /** Type-guard variant; pass `appId` to one place rather than re-listing. */

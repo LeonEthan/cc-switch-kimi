@@ -150,6 +150,8 @@
     "managedByKimiCodeHint": "由 Kimi Code OAuth 管理，請在 CLI 中使用 /login 修改",
     "managedByPi": "Pi 託管",
     "managedByPiHint": "由 Pi 管理（OAuth 由 Pi 持有），請在 Pi 中使用 /login 修改",
+    "managedByOmp": "Omp 託管",
+    "managedByOmpHint": "由 Omp 管理（OAuth 由 Omp 持有），請在 Omp 中使用 /login 修改",
     "openTerminal": "開啟終端機",
     "terminalOpened": "終端機已開啟",
     "terminalOpenFailed": "開啟終端機失敗",
@@ -851,8 +853,10 @@
     "saveFailedGeneric": "儲存失敗，請重試",
     "kimiCodeConfigDir": "Kimi Code 設定目錄",
     "piConfigDir": "Pi 設定目錄",
+    "ompConfigDir": "Omp 設定目錄",
     "browsePlaceholderKimiCode": "~/.kimi-code",
-    "browsePlaceholderPi": "~/.pi/agent"
+    "browsePlaceholderPi": "~/.pi/agent",
+    "browsePlaceholderOmp": "~/.omp/agent"
   },
   "apps": {
     "claude": "Claude",
@@ -866,7 +870,8 @@
     "openclaw": "OpenClaw",
     "hermes": "Hermes",
     "kimicode": "Kimi Code",
-    "pi": "Pi"
+    "pi": "Pi",
+    "omp": "Omp"
   },
   "grokBuild": {
     "apiBackend": "API Backend",
@@ -1486,7 +1491,8 @@
       "opencode": "OpenCode",
       "grokbuild": "Grok Build",
       "kimicode": "Kimi Code",
-      "pi": "Pi"
+      "pi": "Pi",
+      "omp": "Omp"
     },
     "rawInputLabel": "原始",
     "dataSources": "資料來源",
@@ -1499,7 +1505,8 @@
       "opencode_session": "OpenCode 工作階段日誌",
       "grok_session": "Grok Build 工作階段日誌",
       "kimicode_session": "Kimi Code 工作階段日誌",
-      "pi_session": "Pi 工作階段日誌"
+      "pi_session": "Pi 工作階段日誌",
+      "omp_session": "Omp 工作階段日誌"
     },
     "sessionSync": {
       "trigger": "同步工作階段日誌",
@@ -3037,6 +3044,44 @@
       "defaultModel": "預設模型",
       "selectModel": "選擇模型",
       "defaultModelHint": "啟用此供應商時寫入 settings.json 的 defaultModel"
+    }
+  },
+  "omp": {
+    "form": {
+      "providerKey": "供應商 Key",
+      "providerKeyHint": "對應 ~/.omp/agent/models.yml 中的 providers.<key>",
+      "providerKeyRequired": "請填寫供應商標識",
+      "providerKeyInvalid": "標識格式無效，只能使用小寫字母、數字和連字號",
+      "providerKeyDuplicate": "此標識已被使用，請更換",
+      "api": "協議類型",
+      "apiHint": "寫入 models.yml 中該供應商的 api 欄位",
+      "baseUrl": "Base URL",
+      "models": "模型列表",
+      "modelId": "模型 ID",
+      "modelName": "顯示名稱",
+      "contextWindow": "上下文視窗",
+      "maxTokens": "最大輸出 Token",
+      "defaultModel": "預設模型",
+      "selectModel": "選擇模型",
+      "defaultModelHint": "指派角色時作為 modelRoles 選擇器中的模型",
+      "authHeader": "以 Authorization: Bearer 標頭傳送 API Key（authHeader）"
+    },
+    "roles": {
+      "default": "default",
+      "defaultHint": "主模型",
+      "smol": "smol",
+      "smolHint": "輕量快速任務",
+      "slow": "slow",
+      "slowHint": "背景/低成本任務",
+      "plan": "plan",
+      "planHint": "規劃任務",
+      "commit": "commit",
+      "commitHint": "提交訊息生成"
+    },
+    "actions": {
+      "assignRole": "啟用為…",
+      "assigned": "已啟用 {{count}} 個角色",
+      "clearRole": "取消角色"
     }
   }
 }

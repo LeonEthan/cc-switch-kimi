@@ -10,6 +10,7 @@ import type { AppId } from "@/lib/api";
 import { isAdditiveApp } from "@/lib/api/additiveApps";
 import { cn } from "@/lib/utils";
 import { ProviderActions } from "@/components/providers/ProviderActions";
+import { Badge } from "@/components/ui/badge";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import UsageFooter from "@/components/UsageFooter";
 import SubscriptionQuotaFooter from "@/components/SubscriptionQuotaFooter";
@@ -20,6 +21,7 @@ import { PROVIDER_TYPES, TEMPLATE_TYPES } from "@/config/constants";
 import { isHermesReadOnlyProvider } from "@/config/hermesProviderPresets";
 import { isKimiCodeManagedProvider } from "@/config/kimiCodeProviderPresets";
 import { isPiManagedProvider } from "@/config/piProviderPresets";
+import { isOmpManagedProvider } from "@/config/ompProviderPresets";
 import { ProviderHealthBadge } from "@/components/providers/ProviderHealthBadge";
 import { FailoverPriorityBadge } from "@/components/providers/FailoverPriorityBadge";
 import {
@@ -47,6 +49,10 @@ interface ProviderCardProps {
   isInConfig?: boolean; // OpenCode: 是否已添加到 opencode.json
   isOmo?: boolean;
   isOmoSlim?: boolean;
+  // Omp: roles currently assigned to this provider (role-based "current")
+  ompRoles?: string[];
+  onAssignOmpRole?: (role: string) => void;
+  onClearOmpRole?: (role: string) => void;
   onSwitch: (provider: Provider) => void;
   onEdit: (provider: Provider) => void;
   onDelete: (provider: Provider) => void;
@@ -146,6 +152,9 @@ export function ProviderCard({
   isInConfig = true,
   isOmo = false,
   isOmoSlim = false,
+  ompRoles,
+  onAssignOmpRole,
+  onClearOmpRole,
   onSwitch,
   onEdit,
   onDelete,
@@ -236,8 +245,13 @@ export function ProviderCard({
   // auth.json and are never written by CC Switch.
   const isPiReadOnly =
     appId === "pi" && isPiManagedProvider(provider.id, provider.settingsConfig);
+  // Omp-owned entries (`_ccSource: managed|oauth`): credentials live in Omp's
+  // agent.db (read-only for CC Switch) and are never written here.
+  const isOmpReadOnly =
+    appId === "omp" &&
+    isOmpManagedProvider(provider.id, provider.settingsConfig);
   const isReadOnlyProvider =
-    isHermesReadOnly || isKimiCodeReadOnly || isPiReadOnly;
+    isHermesReadOnly || isKimiCodeReadOnly || isPiReadOnly || isOmpReadOnly;
   const isCodexOauth =
     provider.meta?.providerType === PROVIDER_TYPES.CODEX_OAUTH;
   // xAI OAuth (SuperGrok 反代)：额度经自管 OAuth token 自动显示，与 codex_oauth 同构
@@ -303,7 +317,11 @@ export function ProviderCard({
   // selection in `settings.json`. Distinct from OpenCode's "additive" main
   // button (In use / Enable never Remove — see ADR #1).
   const hasPersistentConfigHighlight =
-    (isAdditiveMode || appId === "pi" || appId === "kimicode") && isInConfig;
+    (isAdditiveMode ||
+      appId === "pi" ||
+      appId === "kimicode" ||
+      appId === "omp") &&
+    isInConfig;
   const shouldUseBlue =
     (isAnyOmo && isActiveProvider) ||
     (!isAnyOmo &&
@@ -493,6 +511,27 @@ export function ProviderCard({
                   {t("provider.managedByPi")}
                 </span>
               )}
+              {isOmpReadOnly && (
+                <span
+                  className="inline-flex items-center rounded-md bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 dark:bg-slate-700/60 dark:text-slate-200"
+                  title={t("provider.managedByOmpHint")}
+                >
+                  {t("provider.managedByOmp")}
+                </span>
+              )}
+              {appId === "omp" &&
+                ompRoles &&
+                ompRoles.length > 0 &&
+                ompRoles.map((role) => (
+                  <Badge
+                    key={role}
+                    variant="secondary"
+                    className="rounded-md bg-purple-100 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-100"
+                    title={t(`omp.roles.${role}Hint`, { defaultValue: role })}
+                  >
+                    {t(`omp.roles.${role}`, { defaultValue: role })}
+                  </Badge>
+                ))}
             </div>
 
             {displayUrl && (
@@ -599,6 +638,9 @@ export function ProviderCard({
               isOfficialBlockedByProxy={isOfficialBlockedByProxy}
               isReadOnly={isReadOnlyProvider}
               isOmo={isAnyOmo}
+              ompRoles={ompRoles}
+              onAssignOmpRole={onAssignOmpRole}
+              onClearOmpRole={onClearOmpRole}
               onSwitch={() => onSwitch(provider)}
               onEdit={() => onEdit(provider)}
               onDuplicate={() => onDuplicate(provider)}

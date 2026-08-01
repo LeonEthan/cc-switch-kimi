@@ -232,6 +232,41 @@ export const providersApi = {
   async importPiFromLive(): Promise<number> {
     return await invoke("importPiProvidersFromLive");
   },
+
+  /**
+   * 获取 Omp live 配置（models.yml）中的供应商 ID 列表
+   */
+  async getOmpLiveProviderIds(): Promise<string[]> {
+    return await invoke("getOmpLiveProviderIds");
+  },
+
+  /**
+   * 从 Omp live 配置导入供应商到数据库
+   */
+  async importOmpFromLive(): Promise<number> {
+    return await invoke("importOmpProvidersFromLive");
+  },
+
+  /**
+   * 获取 Omp 角色 → "providerKey/modelId" 选择器映射（config.yml modelRoles）
+   */
+  async getOmpModelRoles(): Promise<Record<string, string>> {
+    return await invoke("getOmpModelRoles");
+  },
+
+  /**
+   * 将供应商写入 Omp live 配置并指派到指定角色
+   */
+  async setOmpProviderRole(providerId: string, role: string): Promise<void> {
+    return await invoke("setOmpProviderRole", { providerId, role });
+  },
+
+  /**
+   * 清除 Omp 的某个角色指派
+   */
+  async clearOmpRole(role: string): Promise<void> {
+    return await invoke("clearOmpModelRole", { role });
+  },
 };
 
 // ============================================================================
