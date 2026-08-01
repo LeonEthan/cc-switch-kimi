@@ -9,9 +9,9 @@ This repository is a **community fork** of the official [farion1231/cc-switch](h
 | Repository | [farion1231/cc-switch](https://github.com/farion1231/cc-switch) | [LeonEthan/cc-switch-kimi](https://github.com/LeonEthan/cc-switch-kimi) |
 | Website | [ccswitch.io](https://ccswitch.io) | *(none — use this repo)* |
 | Releases / Homebrew / auto-update | Official channels | **Not official.** Prefer building from this source |
-| Extra apps | — | **[Kimi Code CLI](https://www.kimi.com/code/)** and **Pi** as first-class managed apps |
+| Extra apps | — | **[Kimi Code CLI](https://www.kimi.com/code/)**, **Pi**, and **omp (Oh My Pi)** as first-class managed apps |
 
-Upstream still provides the bulk of the product. This fork adds Kimi Code and Pi management on top of a recent upstream baseline.
+Upstream still provides the bulk of the product. This fork adds Kimi Code, Pi, and omp management on top of a recent upstream baseline.
 
 ---
 
@@ -52,11 +52,31 @@ Kimi Code is managed like Hermes / OpenCode (additive live config under `~/.kimi
 
 ---
 
+## What this fork adds (omp)
+
+[omp](https://www.npmjs.com/package/@oh-my-pi/pi-coding-agent) (Oh My Pi, binary name: `omp`, a fork of Pi) is managed as an **additive** app like Pi — providers coexist in your live omp config — **with** local proxy takeover, same class as Claude / Codex / Gemini / Grok Build.
+
+| Area | Behavior |
+|------|----------|
+| App id | `omp` |
+| Config | `~/.omp/agent/models.yml` (providers, YAML), `config.yml` (`modelRoles` role selection), sessions; relocatable via `PI_CODING_AGENT_DIR` |
+| Providers | Add / import / assign presets in the omp tab. Unlike other apps, selection is **role-based**: `modelRoles` maps the five roles (default/smol/slow/plan/commit) to `<providerKey>/<modelId>` selectors, so several providers can be "in use" at once. Writes are section-level surgery (only the `providers:` section of `models.yml` / the `modelRoles` key of `config.yml` is re-serialized) — your other entries and everything outside the section are preserved byte-for-byte; managed entries are marked `_ccSource: managed` |
+| Auth | **omp owns its OAuth.** `agent.db` / `models.db` are never written; `agent.db` is queried read-only only to detect OAuth for import marking. API keys are written inline as literal `apiKey` values in `models.yml` (omp resolves them above stored OAuth) |
+| Sessions | Session Manager scans `~/.omp/agent/sessions` (three levels deep, Pi v3 JSONL; read-only except explicit delete); resume via `omp --resume <id>` |
+| Usage dashboard | Sync imports per-request usage (assistant messages, compaction/branch-summary as `_omp_summary`) into `proxy_request_logs` with `data_source = "omp_session"`; per-entry idempotent request id `omp_session:{session}:{entry}`; deduped against proxy rows (no double counting) |
+| Proxy takeover | Optional per-app takeover: the managed entry's `baseUrl` is rewritten to the local proxy (`/omp` serves both Anthropic `/v1/messages` and OpenAI `/chat/completions`) and its `apiKey` to a placeholder; `modelRoles` is **not** moved. Restore returns your config byte-for-byte |
+| Compatibility gate | Writes stop with a clear error if the installed omp is older than the minimum supported version (17.0.0) |
+| Skills | **Managed.** CC Switch syncs Skills to `<dir>/skills` |
+| Prompts | **Managed.** CC Switch writes the global instructions file as `<dir>/AGENTS.md` |
+| MCP | Not managed — omp has no native MCP. CC Switch silently skips omp in MCP sync (same pattern as Pi / OpenClaw) |
+
+---
+
 ## Correct usage
 
-### Prefer this fork only if you need Kimi Code or Pi in CC Switch
+### Prefer this fork only if you need Kimi Code, Pi, or omp in CC Switch
 
-If you do **not** need Kimi Code / Pi management, install the **official** app from [ccswitch.io](https://ccswitch.io) or [farion1231/cc-switch releases](https://github.com/farion1231/cc-switch/releases). You get notarized builds and official auto-update.
+If you do **not** need Kimi Code / Pi / omp management, install the **official** app from [ccswitch.io](https://ccswitch.io) or [farion1231/cc-switch releases](https://github.com/farion1231/cc-switch/releases). You get notarized builds and official auto-update.
 
 ### If you use this fork
 
@@ -67,7 +87,7 @@ If you do **not** need Kimi Code / Pi management, install the **official** app f
    ```bash
    cp -a ~/.cc-switch ~/.cc-switch.backup-$(date +%Y%m%d)
    ```
-5. **Kimi Code CLI** is separate: install via About → Tools, or [Kimi Code docs](https://www.kimi.com/code/). CC Switch only manages providers/MCP/skills/sessions/usage. **Pi** is likewise separate (`npm i -g @earendil-works/pi-coding-agent`); CC Switch only manages providers/sessions/usage/proxy.
+5. **Kimi Code CLI** is separate: install via About → Tools, or [Kimi Code docs](https://www.kimi.com/code/). CC Switch only manages providers/MCP/skills/sessions/usage. **Pi** is likewise separate (`npm i -g @earendil-works/pi-coding-agent`); CC Switch only manages providers/sessions/usage/proxy. **omp** is separate too (`bun install -g @oh-my-pi/pi-coding-agent` or `brew install can1357/tap/omp`); CC Switch only manages providers/roles/sessions/usage/proxy.
 
 ### Build & install (macOS example)
 
@@ -93,8 +113,8 @@ Requirements: Node 18+, pnpm, Rust (see [CONTRIBUTING.md](../CONTRIBUTING.md)). 
 ## Relationship to upstream
 
 - **Upstream issues / PRs** for general CC Switch features: [farion1231/cc-switch](https://github.com/farion1231/cc-switch).
-- **Fork-specific** issues (Kimi Code / Pi integration, fork install docs): [LeonEthan/cc-switch-kimi](https://github.com/LeonEthan/cc-switch-kimi).
-- We aim to stay mergeable with upstream; Kimi Code / Pi work is additive where possible.
+- **Fork-specific** issues (Kimi Code / Pi / omp integration, fork install docs): [LeonEthan/cc-switch-kimi](https://github.com/LeonEthan/cc-switch-kimi).
+- We aim to stay mergeable with upstream; Kimi Code / Pi / omp work is additive where possible.
 - Official trademarks, sponsors, and branding remain property of the original project; listed here for product continuity only.
 
 ---
@@ -116,7 +136,7 @@ Requirements: Node 18+, pnpm, Rust (see [CONTRIBUTING.md](../CONTRIBUTING.md)). 
 | 仓库 | [farion1231/cc-switch](https://github.com/farion1231/cc-switch) | [LeonEthan/cc-switch-kimi](https://github.com/LeonEthan/cc-switch-kimi) |
 | 官网 | [ccswitch.io](https://ccswitch.io) | 无（以本仓库为准） |
 | 安装 / 自动更新 | 官网、Homebrew、官方 Releases | **非官方**；请从本仓库源码构建或本仓库产物安装 |
-| 增量能力 | — | 将 **Kimi Code CLI** 与 **Pi** 作为一等管理应用 |
+| 增量能力 | — | 将 **Kimi Code CLI**、**Pi** 与 **omp (Oh My Pi)** 作为一等管理应用 |
 
 ### 本分支为 Kimi Code 提供的能力
 
@@ -141,8 +161,8 @@ Requirements: Node 18+, pnpm, Rust (see [CONTRIBUTING.md](../CONTRIBUTING.md)). 
 ### 正确使用方式
 
 1. **只需要官方功能** → 请用 [ccswitch.io](https://ccswitch.io) 或官方 Releases。  
-2. **需要在 CC Switch 里管理 Kimi Code / Pi** → 使用**本仓库**构建/安装。  
-3. **务必关闭应用内自动更新**（或忽略官方更新提示），否则可能被官方包覆盖，丢失 Kimi Code / Pi 能力。  
+2. **需要在 CC Switch 里管理 Kimi Code / Pi / omp** → 使用**本仓库**构建/安装。  
+3. **务必关闭应用内自动更新**（或忽略官方更新提示），否则可能被官方包覆盖，丢失 Kimi Code / Pi / omp 能力。  
 4. 官方与本分支 **共用** `com.ccswitch.desktop` 与 `~/.cc-switch/`，不要混装两套后却不知道当前跑的是哪一个。  
 5. 首次运行分支构建前建议备份：`cp -a ~/.cc-switch ~/.cc-switch.backup-$(date +%Y%m%d)`。
 
@@ -157,4 +177,4 @@ pnpm tauri build
 
 产物在 `src-tauri/target/release/bundle/macos/CC Switch.app`。本地包多为 ad-hoc 签名，首次打开可能需右键打开。
 
-问题反馈：Kimi Code / Pi 相关请开本仓库 Issue；通用 CC Switch 问题优先走上游。
+问题反馈：Kimi Code / Pi / omp 相关请开本仓库 Issue；通用 CC Switch 问题优先走上游。
