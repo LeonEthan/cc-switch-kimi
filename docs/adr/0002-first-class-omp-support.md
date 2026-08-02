@@ -70,10 +70,12 @@ omp-owned OAuth, routing parity, session continuity, compatibility gate.
    baseUrl→`{origin}/omp` and apiKey→placeholder and does NOT move
    modelRoles; restore is verbatim.
 
-8. **Session continuity**: session JSONL is Pi's v3 format but stored three
-   levels deep (`sessions/<cwd>/<timestamp>_<uuid>/*.jsonl`, one dir per
-   session containing main + subagent files; each .jsonl is a session).
-   Read-only scan/search; resume via `omp --resume <id>`. Usage import
+8. **Session continuity**: session JSONL is Pi's v3 format in a mixed-depth
+   layout: main sessions live at `sessions/<cwd>/<timestamp>_<uuid>.jsonl`
+   (two levels), subagent sessions one level deeper at
+   `sessions/<cwd>/<timestamp>_<uuid>/*.jsonl`; each .jsonl is a session and
+   both depths are scanned. Read-only scan/search; resume via
+   `omp --resume <id>`. Usage import
    `services/session_usage_omp.rs` (assistant `usage` plus
    compaction/branch-summary as `_omp_summary`, idempotency key
    `omp_session:{session}:{entry}`, data_source `omp_session`, deduped

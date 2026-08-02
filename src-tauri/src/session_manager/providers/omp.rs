@@ -45,24 +45,29 @@ pub fn scan_sessions() -> Vec<SessionMeta> {
             if !bucket_path.is_dir() {
                 continue;
             }
-            // Omp adds one level vs Pi: <cwd-bucket>/<session-dir>/*.jsonl.
-            let Ok(session_dirs) = std::fs::read_dir(&bucket_path) else {
+            // Omp mixes two depths under a cwd bucket:
+            // <cwd-bucket>/<ts>_<uuid>.jsonl      — the main session
+            // <cwd-bucket>/<ts>_<uuid>/*.jsonl    — subagent sessions
+            let Ok(entries) = std::fs::read_dir(&bucket_path) else {
                 continue;
             };
-            for session_dir in session_dirs.flatten() {
-                let session_dir_path = session_dir.path();
-                if !session_dir_path.is_dir() {
-                    continue;
-                }
-                let Ok(file_entries) = std::fs::read_dir(&session_dir_path) else {
-                    continue;
-                };
-                for file in file_entries.flatten() {
-                    let path = file.path();
-                    if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+            for entry in entries.flatten() {
+                let entry_path = entry.path();
+                if entry_path.is_dir() {
+                    let Ok(file_entries) = std::fs::read_dir(&entry_path) else {
                         continue;
+                    };
+                    for file in file_entries.flatten() {
+                        let path = file.path();
+                        if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                            continue;
+                        }
+                        if let Some(meta) = probe_session_file(&path) {
+                            sessions.push(meta);
+                        }
                     }
-                    if let Some(meta) = probe_session_file(&path) {
+                } else if entry_path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
+                    if let Some(meta) = probe_session_file(&entry_path) {
                         sessions.push(meta);
                     }
                 }
@@ -319,7 +324,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_walks_three_levels_and_finds_subagent_files() {
+    fn scan_walks_mixed_depths_and_finds_main_and_subagent_files() {
         let dir = tempfile::tempdir().unwrap();
         // session_roots() points at ~/.omp/agent/sessions; test the walk logic
         // directly against a temp root by inlining the same loop shape.
@@ -332,9 +337,13 @@ mod tests {
                 r#"{"type":"session","version":3,"id":"sub-1234","timestamp":"2026-07-25T05:00:00.000Z","cwd":"/tmp/project"}"#,
             ],
         );
-        // A stray jsonl directly under the bucket (two levels) must NOT be found.
+        // A main-session jsonl directly under the bucket (two levels) IS found.
         let stray = dir.path().join("--tmp-project--").join("stray.jsonl");
-        std::fs::write(&stray, format!("{HEADER}\n")).unwrap();
+        std::fs::write(
+            &stray,
+            r#"{"type":"session","version":3,"id":"main-two-level","timestamp":"2026-07-25T05:00:00.000Z","cwd":"/tmp/project"}"#.to_string() + "\n",
+        )
+        .unwrap();
 
         let mut found = Vec::new();
         for bucket in std::fs::read_dir(dir.path()).unwrap().flatten() {
@@ -342,26 +351,30 @@ mod tests {
             if !bucket_path.is_dir() {
                 continue;
             }
-            for session_dir in std::fs::read_dir(&bucket_path).unwrap().flatten() {
-                let session_dir_path = session_dir.path();
-                if !session_dir_path.is_dir() {
-                    continue;
-                }
-                for file in std::fs::read_dir(&session_dir_path).unwrap().flatten() {
-                    let path = file.path();
-                    if path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
-                        if let Some(meta) = probe_session_file(&path) {
-                            found.push(meta);
+            for entry in std::fs::read_dir(&bucket_path).unwrap().flatten() {
+                let entry_path = entry.path();
+                if entry_path.is_dir() {
+                    for file in std::fs::read_dir(&entry_path).unwrap().flatten() {
+                        let path = file.path();
+                        if path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
+                            if let Some(meta) = probe_session_file(&path) {
+                                found.push(meta);
+                            }
                         }
+                    }
+                } else if entry_path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
+                    if let Some(meta) = probe_session_file(&entry_path) {
+                        found.push(meta);
                     }
                 }
             }
         }
 
-        assert_eq!(found.len(), 2, "main + subagent session files");
+        assert_eq!(found.len(), 3, "main (two-level) + main + subagent session files");
         let ids: Vec<&str> = found.iter().map(|m| m.session_id.as_str()).collect();
         assert!(ids.contains(&"019f979f-2ea8-7e64-a5d8-6248a0848568"));
         assert!(ids.contains(&"sub-1234"));
+        assert!(ids.contains(&"main-two-level"));
     }
 
     #[test]

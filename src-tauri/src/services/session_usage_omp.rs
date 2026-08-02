@@ -96,7 +96,9 @@ fn collect_session_files() -> Vec<PathBuf> {
     files
 }
 
-/// 固定三层布局：`<root>/<cwd>/<session-dir>/*.jsonl`。非递归，避免符号链接环。
+/// Omp 在一个 cwd bucket 下混合两种深度：`<root>/<cwd>/<ts>_<uuid>.jsonl`
+/// （主会话）与 `<root>/<cwd>/<ts>_<uuid>/*.jsonl`（子代理会话）。非递归，
+/// 避免符号链接环。
 fn collect_jsonl_files(root: &Path, files: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(root) else {
         return;
@@ -106,22 +108,23 @@ fn collect_jsonl_files(root: &Path, files: &mut Vec<PathBuf>) {
         if !path.is_dir() {
             continue;
         }
-        let Ok(session_dirs) = fs::read_dir(&path) else {
+        let Ok(bucket) = fs::read_dir(&path) else {
             continue;
         };
-        for session_dir in session_dirs.flatten() {
-            let session_dir_path = session_dir.path();
-            if !session_dir_path.is_dir() {
-                continue;
-            }
-            let Ok(bucket) = fs::read_dir(&session_dir_path) else {
-                continue;
-            };
-            for file in bucket.flatten() {
-                let file_path = file.path();
-                if file_path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
-                    files.push(file_path);
+        for item in bucket.flatten() {
+            let item_path = item.path();
+            if item_path.is_dir() {
+                let Ok(session_files) = fs::read_dir(&item_path) else {
+                    continue;
+                };
+                for file in session_files.flatten() {
+                    let file_path = file.path();
+                    if file_path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
+                        files.push(file_path);
+                    }
                 }
+            } else if item_path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
+                files.push(item_path);
             }
         }
     }
@@ -550,27 +553,31 @@ mod tests {
         assert_eq!(events[0].created_at, 1_700_000_000);
     }
 
-    /// 三层布局 `<root>/<cwd>/<session-dir>/*.jsonl` 的文件收集。
+    /// 混合深度布局：主会话 `<root>/<cwd>/<ts>_<uuid>.jsonl` 与子代理会话
+    /// `<root>/<cwd>/<session-dir>/*.jsonl` 都会被收集。
     #[test]
-    fn collect_walks_three_levels_only() {
+    fn collect_walks_mixed_depths() {
         let dir = tempdir().unwrap();
         let bucket = dir.path().join("--tmp-project--");
         let session_dir = bucket.join("2026-07-25T04-53-39-624Z_019f979f");
         fs::create_dir_all(&session_dir).unwrap();
         fs::write(session_dir.join("session.jsonl"), "{}\n").unwrap();
         fs::write(session_dir.join("PluginScout.jsonl"), "{}\n").unwrap();
-        // Two-level stray file (pi layout) must NOT be collected.
-        fs::write(bucket.join("stray.jsonl"), "{}\n").unwrap();
+        // Two-level main-session file must be collected too.
+        fs::write(bucket.join("2026-08-01T11-51-02-103Z_main.jsonl"), "{}\n").unwrap();
         // Non-jsonl file must NOT be collected.
         fs::write(session_dir.join("notes.txt"), "x\n").unwrap();
 
         let mut files = Vec::new();
         collect_jsonl_files(dir.path(), &mut files);
-        assert_eq!(files.len(), 2);
+        assert_eq!(files.len(), 3);
         assert!(files.iter().all(|p| p.extension().and_then(|e| e.to_str()) == Some("jsonl")));
         assert!(files
             .iter()
             .any(|p| p.file_name().and_then(|n| n.to_str()) == Some("PluginScout.jsonl")));
+        assert!(files
+            .iter()
+            .any(|p| p.file_name().and_then(|n| n.to_str()) == Some("2026-08-01T11-51-02-103Z_main.jsonl")));
     }
 
     #[test]
