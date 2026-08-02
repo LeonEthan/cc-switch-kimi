@@ -30,6 +30,7 @@ const ALL_APPS: AppId[] = [
   "hermes",
   "kimicode",
   "pi",
+  "omp",
 ];
 const STORAGE_KEY = "cc-switch-last-app";
 
