@@ -29,9 +29,17 @@ use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader};
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
+#[cfg(windows)]
+use std::os::windows::io::AsRawHandle;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::SystemTime;
+#[cfg(windows)]
+use windows_sys::Win32::Storage::FileSystem::{
+    FileIdInfo, GetFileInformationByHandleEx, FILE_ID_INFO,
+};
 
 const CODEX_THREAD_REQUEST_ID_PREFIX: &str = "codex_session:thread-v1";
 
@@ -70,6 +78,115 @@ struct TokenCountersSignature {
 struct TokenUsageSignature {
     total: Option<TokenCountersSignature>,
     last: Option<TokenCountersSignature>,
+}
+
+#[derive(Debug)]
+struct TimestampedTokenSignature {
+    timestamp: DateTime<Utc>,
+    signature: TokenUsageSignature,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ParentFileStamp {
+    modified_nanos: i64,
+    size: u64,
+    #[cfg(unix)]
+    device: u64,
+    #[cfg(unix)]
+    inode: u64,
+    #[cfg(windows)]
+    volume_serial: u64,
+    #[cfg(windows)]
+    file_id: [u8; 16],
+}
+
+impl ParentFileStamp {
+    fn from_file(file: &fs::File) -> Option<Self> {
+        let metadata = file.metadata().ok()?;
+        #[cfg(windows)]
+        let (volume_serial, file_id) = windows_file_identity(file)?;
+        Some(Self {
+            modified_nanos: metadata_modified_nanos(&metadata),
+            size: metadata.len(),
+            #[cfg(unix)]
+            device: metadata.dev(),
+            #[cfg(unix)]
+            inode: metadata.ino(),
+            #[cfg(windows)]
+            volume_serial,
+            #[cfg(windows)]
+            file_id,
+        })
+    }
+}
+
+#[cfg(windows)]
+fn windows_file_identity(file: &fs::File) -> Option<(u64, [u8; 16])> {
+    let mut information = FILE_ID_INFO::default();
+    // SAFETY: `file` owns a live handle for this call, and `information` is a
+    // valid writable FILE_ID_INFO buffer of the size passed to Windows.
+    let succeeded = unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle(),
+            FileIdInfo,
+            std::ptr::addr_of_mut!(information).cast(),
+            std::mem::size_of::<FILE_ID_INFO>() as u32,
+        )
+    } != 0;
+    succeeded.then_some((
+        information.VolumeSerialNumber,
+        information.FileId.Identifier,
+    ))
+}
+
+#[derive(Debug)]
+struct ParentTokenTimeline {
+    events: Vec<TimestampedTokenSignature>,
+    max_timestamp: Option<DateTime<Utc>>,
+    has_token_without_timestamp: bool,
+}
+
+impl ParentTokenTimeline {
+    fn signatures_before(
+        &self,
+        parent_path: &Path,
+        cutoff: DateTime<Utc>,
+    ) -> Result<Vec<TokenUsageSignature>, String> {
+        if self.has_token_without_timestamp {
+            return Err(format!(
+                "父 rollout {} 的 token_count 缺少有效 timestamp",
+                parent_path.display()
+            ));
+        }
+        if self
+            .max_timestamp
+            .is_none_or(|timestamp| timestamp < cutoff)
+        {
+            return Err(format!(
+                "父 rollout {} 尚未写到 child fork 时刻",
+                parent_path.display()
+            ));
+        }
+        Ok(self
+            .events
+            .iter()
+            .filter(|event| event.timestamp <= cutoff)
+            .map(|event| event.signature.clone())
+            .collect())
+    }
+}
+
+#[derive(Debug)]
+struct CachedParentTimeline {
+    stamp: ParentFileStamp,
+    timeline: Arc<ParentTokenTimeline>,
+}
+
+#[derive(Debug)]
+struct CachedReplayPrefix {
+    modified: i64,
+    size: u64,
+    prefix: usize,
 }
 
 #[derive(Debug)]
@@ -116,8 +233,8 @@ struct PendingEntry {
 
 #[derive(Debug, Default)]
 struct CodexReplayCaches {
-    parent_signatures: HashMap<(PathBuf, i64), Vec<TokenUsageSignature>>,
-    replay_prefixes: HashMap<(PathBuf, i64, u64), usize>,
+    parent_timelines: HashMap<PathBuf, CachedParentTimeline>,
+    replay_prefixes: HashMap<PathBuf, CachedReplayPrefix>,
     pending: HashMap<PathBuf, PendingEntry>,
 }
 
@@ -333,6 +450,15 @@ fn parse_token_signature(info: &serde_json::Value) -> Option<TokenUsageSignature
     (total.is_some() || last.is_some()).then_some(TokenUsageSignature { total, last })
 }
 
+fn token_snapshot_source(payload: &serde_json::Value) -> Option<String> {
+    payload
+        .get("rate_limits")
+        .and_then(|rate_limits| rate_limits.get("limit_id"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+}
+
 fn get_codex_sync_state(db: &Database, file_path: &Path) -> Result<(i64, i64), AppError> {
     let file_path_str = file_path.to_string_lossy().to_string();
     let state = get_sync_state(db, &file_path_str)?;
@@ -439,9 +565,26 @@ fn compute_delta(prev: &Option<CumulativeTokens>, current: &CumulativeTokens) ->
     }
 }
 
+fn update_high_water(high_water: &mut CumulativeTokens, current: &CumulativeTokens) {
+    high_water.input = high_water.input.max(current.input);
+    high_water.cached_input = high_water.cached_input.max(current.cached_input);
+    high_water.output = high_water.output.max(current.output);
+}
+
 /// 从 JSON Value 中提取累计 token 用量
 fn parse_cumulative_tokens(total_usage: &serde_json::Value) -> Option<CumulativeTokens> {
-    if total_usage.is_null() || !total_usage.is_object() {
+    let fields = total_usage.as_object()?;
+    if ![
+        "input_tokens",
+        "cached_input_tokens",
+        "cache_read_input_tokens",
+        "output_tokens",
+        "reasoning_output_tokens",
+        "total_tokens",
+    ]
+    .iter()
+    .any(|field| fields.contains_key(*field))
+    {
         return None;
     }
     Some(CumulativeTokens {
@@ -587,7 +730,17 @@ fn parse_codex_file(
     let mut root_timestamp = None;
     let mut parent = ParentResolution::None;
     let mut current_model = "unknown".to_string();
-    let mut prev_total: Option<CumulativeTokens> = None;
+    // `total_token_usage` is session-cumulative, including across model and
+    // rate-limit bucket changes. Divergent snapshots are handled by preferring
+    // exact `last_token_usage`, not by splitting the cumulative baseline.
+    let mut total_high_water = None;
+    // Rate-limit refreshes can re-emit unchanged token info under another
+    // `limit_id`. Same-source repeats are identified by that source's latest
+    // full snapshot; cross-source repeats must match the immediately preceding
+    // token event. Do not compare against other sources' older snapshots:
+    // those stale signatures can legitimately recur after a counter reset.
+    let mut last_signature_by_source: HashMap<Option<String>, TokenUsageSignature> = HashMap::new();
+    let mut previous_token_signature = None;
     let mut event_index = 0u32;
     let mut token_events = Vec::new();
     let mut line_offset = 0i64;
@@ -693,27 +846,52 @@ fn parse_codex_file(
                     current_model = normalize_codex_model(model);
                 }
 
-                let (cumulative, is_total) = if let Some(total) = info.get("total_token_usage") {
-                    (parse_cumulative_tokens(total), true)
-                } else if let Some(last) = info.get("last_token_usage") {
-                    (parse_cumulative_tokens(last), false)
-                } else {
+                let snapshot_source = token_snapshot_source(payload);
+                let total = info
+                    .get("total_token_usage")
+                    .and_then(parse_cumulative_tokens);
+                let last = info
+                    .get("last_token_usage")
+                    .and_then(parse_cumulative_tokens);
+                if total.is_none() && last.is_none() {
                     continue;
-                };
-                let Some(cumulative) = cumulative else {
-                    continue;
-                };
-                let delta = if is_total {
-                    let delta = compute_delta(&prev_total, &cumulative);
-                    prev_total = Some(cumulative);
-                    delta
-                } else {
+                }
+                let has_total_snapshot = total.is_some();
+                let duplicate_snapshot = has_total_snapshot
+                    && (last_signature_by_source.get(&snapshot_source) == Some(&signature)
+                        || previous_token_signature.as_ref() == Some(&signature));
+                if has_total_snapshot {
+                    last_signature_by_source.insert(snapshot_source, signature.clone());
+                }
+                previous_token_signature = Some(signature.clone());
+
+                let delta = if duplicate_snapshot {
                     DeltaTokens {
-                        input: cumulative.input as u32,
-                        cached_input: cumulative.cached_input as u32,
-                        output: cumulative.output as u32,
+                        input: 0,
+                        cached_input: 0,
+                        output: 0,
                     }
+                } else if let Some(last) = last {
+                    // Codex provides the exact per-request usage. Prefer it to
+                    // subtracting cumulative snapshots, which may come from
+                    // multiple independently advancing rate-limit lanes.
+                    DeltaTokens {
+                        input: last.input as u32,
+                        cached_input: last.cached_input as u32,
+                        output: last.output as u32,
+                    }
+                } else if let Some(total) = total.as_ref() {
+                    compute_delta(&total_high_water, total)
+                } else {
+                    continue;
                 };
+                if let Some(total) = total {
+                    if let Some(high_water) = total_high_water.as_mut() {
+                        update_high_water(high_water, &total);
+                    } else {
+                        total_high_water = Some(total);
+                    }
+                }
                 let delta = DeltaTokens {
                     cached_input: delta.cached_input.min(delta.input),
                     ..delta
@@ -757,20 +935,28 @@ fn parent_signatures_before(
     parent_path: &Path,
     cutoff: DateTime<Utc>,
 ) -> Result<Vec<TokenUsageSignature>, String> {
-    let cache_key = (parent_path.to_path_buf(), cutoff.timestamp_micros());
-    if let Ok(caches) = replay_caches().lock() {
-        if let Some(signatures) = caches.parent_signatures.get(&cache_key) {
-            return Ok(signatures.clone());
-        }
-    }
-
     let file = fs::File::open(parent_path)
         .map_err(|error| format!("无法打开父 rollout {}: {error}", parent_path.display()))?;
-    let mut signatures = Vec::new();
-    let mut max_timestamp: Option<DateTime<Utc>> = None;
+    let stamp = ParentFileStamp::from_file(&file);
+    let cached_timeline = stamp.and_then(|stamp| {
+        replay_caches().lock().ok().and_then(|caches| {
+            caches
+                .parent_timelines
+                .get(parent_path)
+                .filter(|entry| entry.stamp == stamp)
+                .map(|entry| Arc::clone(&entry.timeline))
+        })
+    });
+    if let Some(timeline) = cached_timeline {
+        return timeline.signatures_before(parent_path, cutoff);
+    }
 
-    // 必须扫描完整父文件并逐行应用 cutoff，不能在首个未来时间戳处 break：
-    // rollout 写入顺序不承诺时间戳严格单调。
+    let mut events = Vec::new();
+    let mut max_timestamp: Option<DateTime<Utc>> = None;
+    let mut has_token_without_timestamp = false;
+
+    // 必须扫描完整父文件，不能在首个未来时间戳处 break：rollout 写入顺序
+    // 不承诺时间戳严格单调。缓存完整时间线后，不同 child cutoff 只需内存过滤。
     for line in BufReader::new(file).lines() {
         let Ok(line) = line else {
             continue;
@@ -802,29 +988,31 @@ fn parent_signatures_before(
             continue;
         };
         let Some(timestamp) = timestamp else {
-            return Err(format!(
-                "父 rollout {} 的 token_count 缺少有效 timestamp",
-                parent_path.display()
-            ));
+            has_token_without_timestamp = true;
+            continue;
         };
-        if timestamp <= cutoff {
-            signatures.push(signature);
-        }
+        events.push(TimestampedTokenSignature {
+            timestamp,
+            signature,
+        });
     }
 
-    if max_timestamp.is_none_or(|timestamp| timestamp < cutoff) {
-        return Err(format!(
-            "父 rollout {} 尚未写到 child fork 时刻",
-            parent_path.display()
-        ));
+    let timeline = Arc::new(ParentTokenTimeline {
+        events,
+        max_timestamp,
+        has_token_without_timestamp,
+    });
+    let result = timeline.signatures_before(parent_path, cutoff);
+    if let (Some(stamp), Ok(mut caches)) = (stamp, replay_caches().lock()) {
+        caches.parent_timelines.insert(
+            parent_path.to_path_buf(),
+            CachedParentTimeline {
+                stamp,
+                timeline: Arc::clone(&timeline),
+            },
+        );
     }
-
-    if let Ok(mut caches) = replay_caches().lock() {
-        caches
-            .parent_signatures
-            .insert(cache_key, signatures.clone());
-    }
-    Ok(signatures)
+    result
 }
 
 fn resolve_parent_signatures(
@@ -993,10 +1181,14 @@ fn sync_single_codex_file(
                     ),
                 ));
             };
-            let cache_key = (file_path.to_path_buf(), file_modified, file_size);
             if let Ok(caches) = replay_caches().lock() {
-                if let Some(prefix) = caches.replay_prefixes.get(&cache_key) {
-                    *prefix
+                if let Some(prefix) = caches
+                    .replay_prefixes
+                    .get(file_path)
+                    .filter(|cached| cached.modified == file_modified && cached.size == file_size)
+                    .map(|cached| cached.prefix)
+                {
+                    prefix
                 } else {
                     drop(caches);
                     let parent_signatures =
@@ -1018,7 +1210,14 @@ fn sync_single_codex_file(
                         };
                     let prefix = matching_replay_prefix(&parsed.token_events, &parent_signatures);
                     if let Ok(mut caches) = replay_caches().lock() {
-                        caches.replay_prefixes.insert(cache_key, prefix);
+                        caches.replay_prefixes.insert(
+                            file_path.to_path_buf(),
+                            CachedReplayPrefix {
+                                modified: file_modified,
+                                size: file_size,
+                                prefix,
+                            },
+                        );
                     }
                     prefix
                 }
@@ -1252,12 +1451,16 @@ mod tests {
         session_meta_at(thread_id, None, None, "2026-07-10T03:00:00Z")
     }
 
-    fn turn_context_at(timestamp: &str) -> serde_json::Value {
+    fn turn_context_for_model_at(model: &str, timestamp: &str) -> serde_json::Value {
         serde_json::json!({
             "timestamp": timestamp,
             "type": "turn_context",
-            "payload": { "model": "gpt-5.6-sol" }
+            "payload": { "model": model }
         })
+    }
+
+    fn turn_context_at(timestamp: &str) -> serde_json::Value {
+        turn_context_for_model_at("gpt-5.6-sol", timestamp)
     }
 
     fn turn_context() -> serde_json::Value {
@@ -1283,6 +1486,52 @@ mod tests {
 
     fn token_count(input: u64, cached: u64, output: u64) -> serde_json::Value {
         token_count_at(input, cached, output, "2026-07-10T03:00:02Z")
+    }
+
+    fn token_count_without_timestamp(input: u64, cached: u64, output: u64) -> serde_json::Value {
+        let mut value = token_count(input, cached, output);
+        value
+            .as_object_mut()
+            .expect("token_count must be an object")
+            .remove("timestamp");
+        value
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn token_count_with_last_at(
+        total_input: u64,
+        total_cached: u64,
+        total_output: u64,
+        last_input: u64,
+        last_cached: u64,
+        last_output: u64,
+        limit_id: &str,
+        timestamp: &str,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "timestamp": timestamp,
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "total_token_usage": {
+                        "input_tokens": total_input,
+                        "cached_input_tokens": total_cached,
+                        "output_tokens": total_output,
+                        "reasoning_output_tokens": 0,
+                        "total_tokens": total_input + total_output
+                    },
+                    "last_token_usage": {
+                        "input_tokens": last_input,
+                        "cached_input_tokens": last_cached,
+                        "output_tokens": last_output,
+                        "reasoning_output_tokens": 0,
+                        "total_tokens": last_input + last_output
+                    }
+                },
+                "rate_limits": { "limit_id": limit_id }
+            }
+        })
     }
 
     fn sync_test_file(
@@ -1368,6 +1617,430 @@ mod tests {
     }
 
     #[test]
+    fn test_interleaved_counter_lanes_use_exact_last_usage() -> Result<(), AppError> {
+        let dir = tempdir().unwrap();
+        let file = rollout_path(dir.path(), PARENT_ID);
+        let bengal_event = token_count_with_last_at(
+            87_709_262,
+            83_563_008,
+            240_919,
+            151_258,
+            147_200,
+            87,
+            "codex_bengalfox",
+            "2026-07-10T03:00:03Z",
+        );
+        write_jsonl(
+            &file,
+            &[
+                session_meta(PARENT_ID),
+                turn_context(),
+                token_count_with_last_at(
+                    76_780_408,
+                    73_010_432,
+                    243_036,
+                    175_074,
+                    169_728,
+                    6_827,
+                    "codex",
+                    "2026-07-10T03:00:02Z",
+                ),
+                bengal_event.clone(),
+                token_count_with_last_at(
+                    76_962_538,
+                    73_180_160,
+                    243_258,
+                    182_130,
+                    169_728,
+                    222,
+                    "codex",
+                    "2026-07-10T03:00:04Z",
+                ),
+                // Repeated snapshots are notifications, not additional API usage.
+                bengal_event,
+            ],
+        );
+
+        let parsed = parse_codex_file(&file, Some(PARENT_ID.to_string()))?;
+        let deltas = parsed
+            .token_events
+            .iter()
+            .filter(|event| !event.delta.is_zero())
+            .map(|event| {
+                (
+                    event.delta.input,
+                    event.delta.cached_input,
+                    event.delta.output,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            deltas,
+            vec![
+                (175_074, 169_728, 6_827),
+                (151_258, 147_200, 87),
+                (182_130, 169_728, 222),
+            ]
+        );
+        assert!(parsed.token_events[3].delta.is_zero());
+        Ok(())
+    }
+
+    #[test]
+    fn test_cross_limit_snapshot_replay_is_not_double_counted() -> Result<(), AppError> {
+        let dir = tempdir().unwrap();
+        let file = rollout_path(dir.path(), PARENT_ID);
+        write_jsonl(
+            &file,
+            &[
+                session_meta(PARENT_ID),
+                turn_context(),
+                token_count_with_last_at(1_000, 0, 10, 100, 0, 10, "codex", "2026-07-10T03:00:02Z"),
+                token_count_with_last_at(
+                    1_000,
+                    0,
+                    10,
+                    100,
+                    0,
+                    10,
+                    "codex_bengalfox",
+                    "2026-07-10T03:00:03Z",
+                ),
+            ],
+        );
+
+        let parsed = parse_codex_file(&file, Some(PARENT_ID.to_string()))?;
+        let deltas = parsed
+            .token_events
+            .iter()
+            .filter(|event| !event.delta.is_zero())
+            .map(|event| event.delta.input)
+            .collect::<Vec<_>>();
+
+        assert_eq!(deltas, vec![100]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_adjacent_replay_burst_across_multiple_sources_is_deduped() -> Result<(), AppError> {
+        let dir = tempdir().unwrap();
+        let file = rollout_path(dir.path(), PARENT_ID);
+        write_jsonl(
+            &file,
+            &[
+                session_meta(PARENT_ID),
+                turn_context(),
+                token_count_with_last_at(1_000, 0, 10, 100, 0, 10, "codex", "2026-07-10T03:00:02Z"),
+                token_count_with_last_at(
+                    1_000,
+                    0,
+                    10,
+                    100,
+                    0,
+                    10,
+                    "codex_bengalfox",
+                    "2026-07-10T03:00:03Z",
+                ),
+                token_count_with_last_at(
+                    1_000,
+                    0,
+                    10,
+                    100,
+                    0,
+                    10,
+                    "codex_spark",
+                    "2026-07-10T03:00:04Z",
+                ),
+            ],
+        );
+
+        let parsed = parse_codex_file(&file, Some(PARENT_ID.to_string()))?;
+        let deltas = parsed
+            .token_events
+            .iter()
+            .filter(|event| !event.delta.is_zero())
+            .map(|event| event.delta.input)
+            .collect::<Vec<_>>();
+
+        assert_eq!(deltas, vec![100]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_cross_source_replay_remains_adjacent_across_non_token_events() -> Result<(), AppError> {
+        let dir = tempdir().unwrap();
+        let file = rollout_path(dir.path(), PARENT_ID);
+        write_jsonl(
+            &file,
+            &[
+                session_meta(PARENT_ID),
+                turn_context(),
+                token_count_with_last_at(1_000, 0, 10, 100, 0, 10, "codex", "2026-07-10T03:00:02Z"),
+                turn_context_for_model_at("gpt-5.6-sol", "2026-07-10T03:00:03Z"),
+                token_count_with_last_at(
+                    1_000,
+                    0,
+                    10,
+                    100,
+                    0,
+                    10,
+                    "codex_bengalfox",
+                    "2026-07-10T03:00:04Z",
+                ),
+            ],
+        );
+
+        let parsed = parse_codex_file(&file, Some(PARENT_ID.to_string()))?;
+        let deltas = parsed
+            .token_events
+            .iter()
+            .filter(|event| !event.delta.is_zero())
+            .map(|event| event.delta.input)
+            .collect::<Vec<_>>();
+
+        assert_eq!(deltas, vec![100]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_same_source_repeat_is_deduped_after_another_source_advances() -> Result<(), AppError> {
+        let dir = tempdir().unwrap();
+        let file = rollout_path(dir.path(), PARENT_ID);
+        write_jsonl(
+            &file,
+            &[
+                session_meta(PARENT_ID),
+                turn_context(),
+                token_count_with_last_at(1_000, 0, 10, 100, 0, 10, "codex", "2026-07-10T03:00:02Z"),
+                token_count_with_last_at(
+                    2_000,
+                    0,
+                    20,
+                    100,
+                    0,
+                    10,
+                    "codex_bengalfox",
+                    "2026-07-10T03:00:03Z",
+                ),
+                // `codex` has not advanced since its X snapshot, so this is a
+                // same-source replay even though another source was interleaved.
+                token_count_with_last_at(1_000, 0, 10, 100, 0, 10, "codex", "2026-07-10T03:00:04Z"),
+            ],
+        );
+
+        let parsed = parse_codex_file(&file, Some(PARENT_ID.to_string()))?;
+        let deltas = parsed
+            .token_events
+            .iter()
+            .filter(|event| !event.delta.is_zero())
+            .map(|event| event.delta.input)
+            .collect::<Vec<_>>();
+
+        assert_eq!(deltas, vec![100, 100]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_stale_cross_source_signature_does_not_swallow_reset() -> Result<(), AppError> {
+        let dir = tempdir().unwrap();
+        let file = rollout_path(dir.path(), PARENT_ID);
+        write_jsonl(
+            &file,
+            &[
+                session_meta(PARENT_ID),
+                turn_context(),
+                // `codex` emits snapshot X.
+                token_count_with_last_at(1_000, 0, 10, 100, 0, 10, "codex", "2026-07-10T03:00:02Z"),
+                // X is replayed under another rate-limit source.
+                token_count_with_last_at(
+                    1_000,
+                    0,
+                    10,
+                    100,
+                    0,
+                    10,
+                    "codex_bengalfox",
+                    "2026-07-10T03:00:03Z",
+                ),
+                // The original source advances to Y.
+                token_count_with_last_at(2_000, 0, 20, 100, 0, 10, "codex", "2026-07-10T03:00:04Z"),
+                // A genuine reset later reproduces X. The stale copy retained
+                // by `codex_bengalfox` must not classify this as a replay.
+                token_count_with_last_at(1_000, 0, 10, 100, 0, 10, "codex", "2026-07-10T03:00:05Z"),
+            ],
+        );
+
+        let parsed = parse_codex_file(&file, Some(PARENT_ID.to_string()))?;
+        let deltas = parsed
+            .token_events
+            .iter()
+            .filter(|event| !event.delta.is_zero())
+            .map(|event| event.delta.input)
+            .collect::<Vec<_>>();
+
+        assert_eq!(deltas, vec![100, 100, 100]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_full_snapshot_dedupe_allows_counter_reset() -> Result<(), AppError> {
+        let dir = tempdir().unwrap();
+        let file = rollout_path(dir.path(), PARENT_ID);
+        let first =
+            token_count_with_last_at(100, 50, 10, 100, 50, 10, "codex", "2026-07-10T03:00:02Z");
+        write_jsonl(
+            &file,
+            &[
+                session_meta(PARENT_ID),
+                turn_context(),
+                first.clone(),
+                first,
+                token_count_with_last_at(
+                    200,
+                    100,
+                    20,
+                    100,
+                    50,
+                    10,
+                    "codex",
+                    "2026-07-10T03:00:04Z",
+                ),
+                // A restarted counter may legitimately return to an older
+                // total after another full snapshot has advanced the source.
+                token_count_with_last_at(100, 50, 10, 50, 25, 5, "codex", "2026-07-10T03:00:05Z"),
+            ],
+        );
+
+        let parsed = parse_codex_file(&file, Some(PARENT_ID.to_string()))?;
+        let deltas = parsed
+            .token_events
+            .iter()
+            .filter(|event| !event.delta.is_zero())
+            .map(|event| event.delta.input)
+            .collect::<Vec<_>>();
+
+        assert_eq!(deltas, vec![100, 100, 50]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_empty_last_usage_falls_back_to_total() -> Result<(), AppError> {
+        let dir = tempdir().unwrap();
+        let file = rollout_path(dir.path(), PARENT_ID);
+        write_jsonl(
+            &file,
+            &[
+                session_meta(PARENT_ID),
+                turn_context(),
+                serde_json::json!({
+                    "timestamp": "2026-07-10T03:00:02Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": {
+                            "total_token_usage": {
+                                "input_tokens": 100,
+                                "cached_input_tokens": 0,
+                                "output_tokens": 10,
+                                "reasoning_output_tokens": 0,
+                                "total_tokens": 110
+                            },
+                            "last_token_usage": {}
+                        }
+                    }
+                }),
+            ],
+        );
+
+        let parsed = parse_codex_file(&file, Some(PARENT_ID.to_string()))?;
+        let deltas = parsed
+            .token_events
+            .iter()
+            .filter(|event| !event.delta.is_zero())
+            .map(|event| event.delta.input)
+            .collect::<Vec<_>>();
+
+        assert_eq!(deltas, vec![100]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_empty_total_does_not_enable_snapshot_deduplication() -> Result<(), AppError> {
+        let dir = tempdir().unwrap();
+        let file = rollout_path(dir.path(), PARENT_ID);
+        let event = |limit_id: &str, timestamp: &str| {
+            serde_json::json!({
+                "timestamp": timestamp,
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "info": {
+                        "total_token_usage": {},
+                        "last_token_usage": {
+                            "input_tokens": 100,
+                            "cached_input_tokens": 0,
+                            "output_tokens": 10,
+                            "reasoning_output_tokens": 0,
+                            "total_tokens": 110
+                        }
+                    },
+                    "rate_limits": { "limit_id": limit_id }
+                }
+            })
+        };
+        write_jsonl(
+            &file,
+            &[
+                session_meta(PARENT_ID),
+                turn_context(),
+                event("codex", "2026-07-10T03:00:02Z"),
+                // Without a usable cumulative total, identical per-request
+                // usage is not enough evidence that this is a replay.
+                event("codex_bengalfox", "2026-07-10T03:00:03Z"),
+            ],
+        );
+
+        let parsed = parse_codex_file(&file, Some(PARENT_ID.to_string()))?;
+        let deltas = parsed
+            .token_events
+            .iter()
+            .filter(|event| !event.delta.is_zero())
+            .map(|event| event.delta.input)
+            .collect::<Vec<_>>();
+
+        assert_eq!(deltas, vec![100, 100]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_total_fallback_uses_session_baseline_across_model_switch() -> Result<(), AppError> {
+        let dir = tempdir().unwrap();
+        let file = rollout_path(dir.path(), PARENT_ID);
+        write_jsonl(
+            &file,
+            &[
+                session_meta(PARENT_ID),
+                turn_context_for_model_at("model-a", "2026-07-10T03:00:01Z"),
+                token_count_at(100, 50, 10, "2026-07-10T03:00:02Z"),
+                turn_context_for_model_at("model-b", "2026-07-10T03:00:03Z"),
+                token_count_at(150, 75, 15, "2026-07-10T03:00:04Z"),
+            ],
+        );
+
+        let parsed = parse_codex_file(&file, Some(PARENT_ID.to_string()))?;
+        let deltas = parsed
+            .token_events
+            .iter()
+            .filter(|event| !event.delta.is_zero())
+            .map(|event| event.delta.input)
+            .collect::<Vec<_>>();
+
+        assert_eq!(deltas, vec![100, 50]);
+        Ok(())
+    }
+
+    #[test]
     fn test_parse_cumulative_tokens_valid() {
         let json: serde_json::Value = serde_json::json!({
             "input_tokens": 17934,
@@ -1389,6 +2062,17 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_cumulative_tokens_rejects_empty_object_but_accepts_explicit_zero() {
+        assert!(parse_cumulative_tokens(&serde_json::json!({})).is_none());
+
+        let tokens = parse_cumulative_tokens(&serde_json::json!({ "input_tokens": 0 }))
+            .expect("an explicit zero is valid usage");
+        assert_eq!(tokens.input, 0);
+        assert_eq!(tokens.cached_input, 0);
+        assert_eq!(tokens.output, 0);
+    }
+
+    #[test]
     fn test_parse_cumulative_tokens_alt_field_names() {
         // 某些版本可能使用 cache_read_input_tokens 而非 cached_input_tokens
         let json: serde_json::Value = serde_json::json!({
@@ -1407,6 +2091,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_thread_spawn_parent_strips_replay_and_keeps_live_usage() -> Result<(), AppError> {
         clear_codex_replay_caches();
         let db = Database::memory()?;
@@ -1449,6 +2134,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_filtered_parent_events_use_subsequence_prefix_alignment() -> Result<(), AppError> {
         clear_codex_replay_caches();
         let db = Database::memory()?;
@@ -1481,6 +2167,158 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
+    fn test_parent_rollout_is_cached_once_across_fork_cutoffs() -> Result<(), AppError> {
+        clear_codex_replay_caches();
+        let temp = tempdir().unwrap();
+        let parent = rollout_path(temp.path(), PARENT_ID);
+        write_jsonl(
+            &parent,
+            &[
+                session_meta(PARENT_ID),
+                token_count_at(100, 50, 10, "2026-07-10T03:00:01Z"),
+                token_count_at(200, 100, 20, "2026-07-10T03:00:10Z"),
+                turn_context_at("2026-07-10T03:00:20Z"),
+            ],
+        );
+
+        let early = "2026-07-10T03:00:05Z".parse::<DateTime<Utc>>().unwrap();
+        let late = "2026-07-10T03:00:15Z".parse::<DateTime<Utc>>().unwrap();
+        assert_eq!(parent_signatures_before(&parent, early).unwrap().len(), 1);
+        let first_timeline =
+            Arc::clone(&replay_caches().lock().unwrap().parent_timelines[&parent].timeline);
+        assert_eq!(parent_signatures_before(&parent, late).unwrap().len(), 2);
+
+        let caches = replay_caches().lock().unwrap();
+        assert_eq!(caches.parent_timelines.len(), 1);
+        assert!(Arc::ptr_eq(
+            &first_timeline,
+            &caches.parent_timelines[&parent].timeline
+        ));
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_parent_rollout_cache_invalidates_after_append() -> Result<(), AppError> {
+        clear_codex_replay_caches();
+        let temp = tempdir().unwrap();
+        let parent = rollout_path(temp.path(), PARENT_ID);
+        let cutoff = "2026-07-10T03:00:15Z".parse::<DateTime<Utc>>().unwrap();
+        write_jsonl(
+            &parent,
+            &[
+                session_meta(PARENT_ID),
+                token_count_at(100, 50, 10, "2026-07-10T03:00:01Z"),
+                turn_context_at("2026-07-10T03:00:20Z"),
+            ],
+        );
+        assert_eq!(parent_signatures_before(&parent, cutoff).unwrap().len(), 1);
+
+        write_jsonl(
+            &parent,
+            &[
+                session_meta(PARENT_ID),
+                token_count_at(100, 50, 10, "2026-07-10T03:00:01Z"),
+                token_count_at(200, 100, 20, "2026-07-10T03:00:10Z"),
+                turn_context_at("2026-07-10T03:00:20Z"),
+            ],
+        );
+        assert_eq!(parent_signatures_before(&parent, cutoff).unwrap().len(), 2);
+
+        let caches = replay_caches().lock().unwrap();
+        assert_eq!(caches.parent_timelines.len(), 1);
+        Ok(())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_parent_rollout_content_error_cache_preserves_open_errors() {
+        clear_codex_replay_caches();
+        let temp = tempdir().unwrap();
+        let parent = rollout_path(temp.path(), PARENT_ID);
+        let cutoff = "2026-07-10T03:00:05Z".parse::<DateTime<Utc>>().unwrap();
+        write_jsonl(
+            &parent,
+            &[
+                session_meta(PARENT_ID),
+                token_count_without_timestamp(100, 50, 10),
+                turn_context_at("2026-07-10T03:00:20Z"),
+            ],
+        );
+
+        let first_error = parent_signatures_before(&parent, cutoff).unwrap_err();
+        assert!(first_error.contains("token_count 缺少有效 timestamp"));
+        let cached_timeline =
+            || Arc::clone(&replay_caches().lock().unwrap().parent_timelines[&parent].timeline);
+        let first_timeline = cached_timeline();
+
+        let second_error = parent_signatures_before(&parent, cutoff).unwrap_err();
+        assert_eq!(second_error, first_error);
+        assert!(Arc::ptr_eq(&first_timeline, &cached_timeline()));
+
+        fs::remove_file(&parent).unwrap();
+        let open_error = parent_signatures_before(&parent, cutoff).unwrap_err();
+        assert!(open_error.contains("无法打开父 rollout"));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_parent_rollout_nanosecond_cutoffs_are_exact() {
+        clear_codex_replay_caches();
+        let temp = tempdir().unwrap();
+        let parent = rollout_path(temp.path(), PARENT_ID);
+        write_jsonl(
+            &parent,
+            &[
+                session_meta(PARENT_ID),
+                token_count_at(100, 50, 10, "2026-07-10T03:00:00.000000500Z"),
+                turn_context_at("2026-07-10T03:00:00.000000900Z"),
+            ],
+        );
+
+        let before = "2026-07-10T03:00:00.000000300Z"
+            .parse::<DateTime<Utc>>()
+            .unwrap();
+        let after = "2026-07-10T03:00:00.000000700Z"
+            .parse::<DateTime<Utc>>()
+            .unwrap();
+        assert!(parent_signatures_before(&parent, before)
+            .unwrap()
+            .is_empty());
+        assert_eq!(parent_signatures_before(&parent, after).unwrap().len(), 1);
+        assert_eq!(replay_caches().lock().unwrap().parent_timelines.len(), 1);
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn test_parent_file_stamp_distinguishes_same_size_same_mtime_files() {
+        let temp = tempdir().unwrap();
+        let parent = rollout_path(temp.path(), PARENT_ID);
+        let replacement = temp.path().join("replacement.jsonl");
+        let values = [session_meta(PARENT_ID), token_count(100, 50, 10)];
+        write_jsonl(&parent, &values);
+        write_jsonl(&replacement, &values);
+        let original_file = fs::File::open(&parent).unwrap();
+        let original_metadata = original_file.metadata().unwrap();
+        let replacement_file = fs::OpenOptions::new()
+            .write(true)
+            .open(&replacement)
+            .unwrap();
+        replacement_file
+            .set_times(fs::FileTimes::new().set_modified(original_metadata.modified().unwrap()))
+            .unwrap();
+        let original_stamp = ParentFileStamp::from_file(&original_file).unwrap();
+        let replacement_stamp = ParentFileStamp::from_file(&replacement_file).unwrap();
+        assert_eq!(
+            (original_stamp.size, original_stamp.modified_nanos),
+            (replacement_stamp.size, replacement_stamp.modified_nanos)
+        );
+        assert_ne!(original_stamp, replacement_stamp);
+    }
+
+    #[test]
+    #[serial_test::serial]
     fn test_empty_fork_imports_no_parent_usage() -> Result<(), AppError> {
         clear_codex_replay_caches();
         let db = Database::memory()?;
@@ -1526,6 +2364,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_conflicting_explicit_parents_are_deferred() -> Result<(), AppError> {
         clear_codex_replay_caches();
         let db = Database::memory()?;
@@ -1551,6 +2390,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_parent_future_signature_cannot_extend_replay_prefix() -> Result<(), AppError> {
         clear_codex_replay_caches();
         let db = Database::memory()?;
@@ -1582,6 +2422,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_missing_parent_is_deferred_and_recovered_without_child_change() -> Result<(), AppError>
     {
         clear_codex_replay_caches();
@@ -1615,6 +2456,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_billable_file_without_meta_is_deferred_without_cursor() -> Result<(), AppError> {
         clear_codex_replay_caches();
         let db = Database::memory()?;
@@ -1641,6 +2483,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_non_billable_file_without_meta_advances_cursor() -> Result<(), AppError> {
         clear_codex_replay_caches();
         let db = Database::memory()?;
@@ -1661,6 +2504,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn test_subagents_use_filename_thread_ids() -> Result<(), AppError> {
         clear_codex_replay_caches();
         let db = Database::memory()?;
